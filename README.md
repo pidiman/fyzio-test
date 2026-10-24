@@ -16,6 +16,33 @@ npm run dev               # http://localhost:3000
 Vyžaduje Node.js 22.13 alebo novší. Databáza sa vytvorí v `data/fyzio.db` a pri prvom spustení sa naplní ukážkovými procedúrami.
 Ak `ADMIN_PASSWORD` nie je nastavené, server pri štarte vypíše dočasné heslo.
 
+## E-maily
+
+Bez nastaveného SMTP sa rezervácie len ukladajú do adminu. Po nastavení:
+
+- na `ADMIN_EMAIL` príde upozornenie na každú novú rezerváciu (odpoveď ide priamo klientovi),
+- klient (ak zadal e-mail) dostane potvrdenie prijatia, potvrdenie termínu a info o zrušení.
+
+Premenné do `.env`:
+
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=vas.ucet@gmail.com
+SMTP_PASS=xxxxxxxxxxxxxxxx          # Gmail: heslo aplikácie (myaccount.google.com/apppasswords)
+MAIL_FROM="FyzioPlus <vas.ucet@gmail.com>"
+ADMIN_EMAIL=kam.chodia.rezervacie@gmail.com
+SITE_NAME=FyzioPlus
+SITE_URL=https://fyzio.pidiman.sk
+CONTACT_PHONE=+421 900 123 456
+```
+
+Port 465 sa automaticky použije so SSL (`SMTP_SECURE` vynúti iné správanie). Funkčnosť overíte v admine:
+**Nastavenia → E-mailové notifikácie → Poslať testovací e-mail**. Chyby SMTP sa vypisujú do logu
+(`docker logs fyzio-web`).
+
+Oracle Cloud blokuje odchádzajúci port 25 – použite 587 alebo 465.
+
 ## Nasadenie na oracle-free-1 (Docker + Caddy)
 
 Predpoklad: na serveri beží Caddy z `~/docker/proxy` a existuje Docker sieť `web`.

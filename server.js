@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { db, getSettings, saveSettings, ICON_KEYS } from './db.js';
+import { mailStatus, sendMail, notifyNewBooking, notifyStatus } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const TIMEZONE = process.env.TIMEZONE || 'Europe/Bratislava';
@@ -136,7 +137,9 @@ app.post('/api/bookings', rateLimit(10, 3600e3), (req, res) => {
     proc.id, proc.name, proc.duration_min, proc.price, b.date, b.time,
     toTime(toMin(b.time) + proc.duration_min), name, phone, email, note
   );
-  res.status(201).json({ id: Number(result.lastInsertRowid) });
+  const id = Number(result.lastInsertRowid);
+  notifyNewBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(id));
+  res.status(201).json({ id });
 });
 
 // ---------- admin ----------
@@ -220,6 +223,7 @@ app.patch('/api/admin/bookings/:id', (req, res) => {
     if (clash) throw new HttpError(409, 'Termín je medzitým obsadený inou rezerváciou.');
   }
   db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, booking.id);
+  if (booking.status !== status) notifyStatus(booking, status);
   res.json({ ok: true });
 });
 
@@ -271,6 +275,18 @@ app.delete('/api/admin/procedures/:id', (req, res) => {
 });
 
 app.get('/api/admin/settings', (req, res) => res.json(getSettings()));
+
+app.get('/api/admin/mail', (req, res) => res.json(mailStatus));
+
+app.post('/api/admin/mail/test', async (req, res) => {
+  if (!mailStatus.adminEmail) throw bad('ADMIN_EMAIL nie je nastavené.');
+  try {
+    await sendMail(mailStatus.adminEmail, 'Testovací e-mail', 'Odosielanie e-mailov z rezervačného systému funguje.');
+  } catch (err) {
+    throw bad(`Odoslanie zlyhalo: ${err.message}`);
+  }
+  res.json({ ok: true });
+});
 
 app.put('/api/admin/settings', (req, res) => {
   const body = req.body ?? {};

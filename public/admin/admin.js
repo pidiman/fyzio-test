@@ -226,7 +226,20 @@ const loadSettings = guard(async () => {
   settingsForm.elements.max_days_ahead.value = s.max_days_ahead;
   blockedDates = s.blocked_dates;
   renderBlocked();
+
+  const mail = await api('/api/admin/mail');
+  $('#mail-status').textContent = !mail.configured
+    ? 'SMTP nie je nastavené – e-maily sa neodosielajú. Doplňte SMTP_* premenné do .env a reštartujte server.'
+    : mail.adminEmail
+      ? `Nové rezervácie chodia na ${mail.adminEmail}. Klient dostane e-mail pri prijatí, potvrdení a zrušení termínu.`
+      : 'SMTP je nastavené, ale chýba ADMIN_EMAIL – upozornenia na nové rezervácie nechodia.';
+  $('#mail-test').hidden = !(mail.configured && mail.adminEmail);
 });
+
+$('#mail-test').addEventListener('click', guard(async () => {
+  await api('/api/admin/mail/test', { method: 'POST' });
+  toast('Testovací e-mail odoslaný');
+}));
 
 $('#hours').addEventListener('change', (e) => {
   if (e.target.type === 'checkbox') e.target.closest('.hrow').classList.toggle('closed', !e.target.checked);
