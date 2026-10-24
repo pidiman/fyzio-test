@@ -12,6 +12,8 @@ const transport = SMTP_HOST
       port,
       secure: SMTP_SECURE ? SMTP_SECURE === 'true' : port === 465,
       auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+      // interný relay (smtp-relay) bez prihlásenia často ponúka STARTTLS so self-signed certifikátom
+      tls: SMTP_USER ? undefined : { rejectUnauthorized: false },
     })
   : null;
 
@@ -24,6 +26,7 @@ if (!transport) {
     () => console.log(`SMTP pripojené (${SMTP_HOST}:${port})`),
     (err) => console.error(`SMTP chyba (${SMTP_HOST}:${port}):`, err.message)
   );
+  if (!MAIL_FROM && !SMTP_USER) console.warn('MAIL_FROM nie je nastavené – relay môže e-maily bez odosielateľa odmietnuť.');
   if (!ADMIN_EMAIL) console.warn('ADMIN_EMAIL nie je nastavené – upozornenia na nové rezervácie sa neodosielajú.');
 }
 

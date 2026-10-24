@@ -1,0 +1,14 @@
+# Pripojenie k sieti, v ktorej beží smtp-relay (ak nemá port zverejnený na hostiteľovi).
+#   cp docker-compose.override.example.yml docker-compose.override.yml
+#   názov siete zistíte: docker inspect smtp-relay --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+# V .env potom SMTP_HOST=smtp-relay
+services:
+  web:
+    networks:
+      - web
+      - mail
+
+networks:
+  mail:
+    external: true
+    name: smtp-relay_default

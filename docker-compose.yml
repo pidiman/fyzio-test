@@ -11,6 +11,9 @@ services:
     # len pre lokálny test na serveri (curl http://127.0.0.1:8092), verejne ide cez Caddy
     ports:
       - "127.0.0.1:8092:3000"
+    # smtp-relay s portom zverejneným na hostiteľovi je dostupný ako host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - fyzio-data:/app/data
     networks:

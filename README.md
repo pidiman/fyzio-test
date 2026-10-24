@@ -23,7 +23,41 @@ Bez nastaveného SMTP sa rezervácie len ukladajú do adminu. Po nastavení:
 - na `ADMIN_EMAIL` príde upozornenie na každú novú rezerváciu (odpoveď ide priamo klientovi),
 - klient (ak zadal e-mail) dostane potvrdenie prijatia, potvrdenie termínu a info o zrušení.
 
-Premenné do `.env`:
+### Cez smtp-relay na serveri (odporúčané)
+
+Najprv zistite, ako je relay dostupný:
+
+```bash
+docker ps --filter name=smtp-relay --format '{{.Ports}}'
+docker inspect smtp-relay --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+```
+
+- **Relay má port zverejnený na `0.0.0.0`** (napr. `0.0.0.0:25->25/tcp`) – stačí `.env`:
+  ```bash
+  SMTP_HOST=host.docker.internal
+  SMTP_PORT=25
+  ```
+- **Relay je len v Docker sieti** (alebo port viazaný na `127.0.0.1`) – pripojte fyzio do jeho siete:
+  ```bash
+  cp docker-compose.override.example.yml docker-compose.override.yml
+  # v ňom upravte "name:" na sieť z docker inspect vyššie
+  ```
+  a do `.env`:
+  ```bash
+  SMTP_HOST=smtp-relay
+  SMTP_PORT=25     # port, na ktorom relay počúva vo vnútri kontajnera
+  ```
+
+Spoločne pre obe varianty (bez `SMTP_USER`/`SMTP_PASS` – relay neoveruje):
+
+```bash
+MAIL_FROM="FyzioPlus <rezervacie@pidiman.sk>"   # doména, ktorú relay smie odosielať
+ADMIN_EMAIL=kam.chodia.rezervacie@gmail.com
+SITE_URL=https://fyzio.pidiman.sk
+CONTACT_PHONE=+421 900 123 456
+```
+
+### Cez externé SMTP (napr. Gmail)
 
 ```bash
 SMTP_HOST=smtp.gmail.com
