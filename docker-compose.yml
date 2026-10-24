@@ -1,0 +1,24 @@
+services:
+  web:
+    build: .
+    container_name: fyzio-web
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: 3000
+    # len pre lokálny test na serveri (curl http://127.0.0.1:8092), verejne ide cez Caddy
+    ports:
+      - "127.0.0.1:8092:3000"
+    volumes:
+      - fyzio-data:/app/data
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+
+volumes:
+  fyzio-data:

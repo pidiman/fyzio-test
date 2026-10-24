@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>FyzioPlus – administrácia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<div class="login" id="login" hidden>
+  <form class="login-card" id="login-form">
+    <div class="logo"><span class="logo-mark">✚</span>FyzioPlus</div>
+    <p>Prihlásenie do administrácie</p>
+    <input type="password" name="password" placeholder="Heslo" autocomplete="current-password" required autofocus>
+    <button class="btn btn-primary">Prihlásiť sa</button>
+    <p class="err" id="login-err"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div class="wrap bar">
+      <div class="logo"><span class="logo-mark">✚</span>FyzioPlus <small>admin</small></div>
+      <div class="bar-actions">
+        <a href="/" target="_blank" class="link">Zobraziť web ↗</a>
+        <button class="btn btn-ghost btn-sm" id="logout">Odhlásiť</button>
+      </div>
+    </div>
+    <nav class="wrap tabs">
+      <button data-tab="bookings" class="active">Rezervácie</button>
+      <button data-tab="procedures">Procedúry</button>
+      <button data-tab="settings">Nastavenia</button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <!-- Rezervácie -->
+    <section id="tab-bookings">
+      <div class="stats" id="stats"></div>
+      <div class="toolbar">
+        <select id="f-range">
+          <option value="upcoming">Nadchádzajúce</option>
+          <option value="today">Dnes</option>
+          <option value="past">Minulé</option>
+          <option value="all">Všetky</option>
+        </select>
+        <select id="f-status">
+          <option value="">Všetky stavy</option>
+          <option value="new">Nové</option>
+          <option value="confirmed">Potvrdené</option>
+          <option value="done">Dokončené</option>
+          <option value="cancelled">Zrušené</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="refresh">↻ Obnoviť</button>
+      </div>
+      <div class="list" id="bookings"></div>
+    </section>
+
+    <!-- Procedúry -->
+    <section id="tab-procedures" hidden>
+      <div class="toolbar">
+        <h2>Procedúry</h2>
+        <button class="btn btn-primary btn-sm" id="proc-new">+ Nová procedúra</button>
+      </div>
+      <form class="panel form-grid" id="proc-form" hidden>
+        <h3 class="full" id="proc-form-title">Nová procedúra</h3>
+        <input type="hidden" name="id">
+        <label class="full">Názov *<input name="name" required maxlength="100"></label>
+        <label class="full">Popis<textarea name="description" rows="2" maxlength="500"></textarea></label>
+        <label>Trvanie (min) *<input name="duration_min" type="number" min="5" max="480" step="5" required></label>
+        <label>Cena (€) *<input name="price" type="number" min="0" step="0.5" required></label>
+        <label>Ikona<select name="icon" id="icon-select"></select></label>
+        <label>Poradie<input name="sort" type="number" value="0"></label>
+        <label class="check full"><input type="checkbox" name="active" checked> Zobraziť na webe (dá sa objednať)</label>
+        <div class="full form-actions">
+          <button class="btn btn-primary">Uložiť</button>
+          <button type="button" class="btn btn-ghost" id="proc-cancel">Zrušiť</button>
+        </div>
+      </form>
+      <div class="list" id="procedures"></div>
+    </section>
+
+    <!-- Nastavenia -->
+    <section id="tab-settings" hidden>
+      <form id="settings-form">
+        <div class="panel">
+          <h3>Otváracie hodiny</h3>
+          <p class="muted">Podľa nich sa na webe ponúkajú voľné termíny.</p>
+          <div class="hours" id="hours"></div>
+        </div>
+        <div class="panel form-grid">
+          <h3 class="full">Rezervácie</h3>
+          <label>Krok termínov
+            <select name="slot_step">
+              <option value="10">10 min</option><option value="15">15 min</option><option value="20">20 min</option>
+              <option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option>
+            </select>
+          </label>
+          <label>Rezervovať najviac dní dopredu<input name="max_days_ahead" type="number" min="1" max="365"></label>
+        </div>
+        <div class="panel">
+          <h3>Zatvorené dni</h3>
+          <p class="muted">Dovolenka, sviatky… V tieto dni sa nedá objednať.</p>
+          <div class="add-date">
+            <input type="date" id="blocked-input">
+            <button type="button" class="btn btn-ghost btn-sm" id="blocked-add">Pridať</button>
+          </div>
+          <div class="chips" id="blocked"></div>
+        </div>
+        <button class="btn btn-primary">Uložiť nastavenia</button>
+      </form>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

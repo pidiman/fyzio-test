@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modrá Vlna – Variant 3 (Soft)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sky:#dff0ff; --sky2:#c4e2fb; --ocean:#2b6cb0; --deep:#16365f; --mist:#f6fbff;
+    --sand:#fffaf3; --text:#24384f; --muted:#62768e; --r:28px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"DM Sans",system-ui,sans-serif;background:var(--mist);color:var(--text);line-height:1.65;overflow-x:hidden}
+  h1,h2,h3,.logo{font-family:Fraunces,Georgia,serif;font-weight:500;color:var(--deep)}
+  a{color:inherit;text-decoration:none}
+  .container{width:min(1140px,100% - 32px);margin-inline:auto}
+
+  header{padding:20px 0;position:relative;z-index:20}
+  .nav{display:flex;justify-content:space-between;align-items:center}
+  .logo{font-size:1.5rem;display:flex;align-items:center;gap:10px}
+  .logo svg{width:34px}
+  .menu{display:flex;gap:6px;list-style:none;background:#fff;padding:6px;border-radius:999px;box-shadow:0 4px 20px rgba(43,108,176,.08)}
+  .menu a{display:block;padding:8px 18px;border-radius:999px;font-weight:500;color:var(--muted);transition:.2s}
+  .menu a:hover,.menu a.active{background:var(--sky);color:var(--ocean)}
+  .btn{display:inline-flex;align-items:center;gap:10px;padding:14px 26px;border-radius:999px;font-weight:700;transition:.25s}
+  .btn-ocean{background:var(--ocean);color:#fff}
+  .btn-ocean:hover{background:var(--deep)}
+  .btn-soft{background:#fff;color:var(--ocean)}
+  .burger{display:none;background:#fff;border:0;width:46px;height:46px;border-radius:50%;cursor:pointer;box-shadow:0 4px 20px rgba(43,108,176,.1)}
+  .burger span{display:block;width:20px;height:2px;background:var(--deep);margin:4px auto;border-radius:2px;transition:.3s}
+
+  .hero{position:relative;padding:40px 0 120px}
+  .hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+  .pill{display:inline-block;background:var(--sky);color:var(--ocean);padding:6px 16px;border-radius:999px;font-weight:500;font-size:.9rem}
+  .hero h1{font-size:clamp(2.4rem,6vw,4.4rem);line-height:1.05;margin:20px 0}
+  .hero h1 i{color:var(--ocean)}
+  .hero p{color:var(--muted);font-size:1.12rem;max-width:480px}
+  .hero-cta{display:flex;gap:12px;margin-top:32px;flex-wrap:wrap}
+  .blob-wrap{position:relative;aspect-ratio:1/1.05}
+  .blob{position:absolute;inset:0;background:linear-gradient(160deg,var(--sky2),var(--ocean));border-radius:58% 42% 46% 54% / 52% 44% 56% 48%;animation:morph 12s ease-in-out infinite;overflow:hidden}
+  .blob svg{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:80%}
+  @keyframes morph{50%{border-radius:42% 58% 60% 40% / 45% 58% 42% 55%}}
+  .chip{position:absolute;background:#fff;border-radius:20px;padding:14px 18px;box-shadow:0 12px 30px rgba(22,54,95,.12);font-size:.9rem}
+  .chip b{display:block;color:var(--deep);font-size:1.3rem;font-family:Fraunces}
+  .chip-1{top:8%;left:-6%}.chip-2{bottom:10%;right:-4%}
+  .wave{position:absolute;bottom:0;left:0;width:100%;height:100px}
+
+  section{padding:96px 0}
+  .head{max-width:600px;margin-bottom:48px}
+  .head.center{text-align:center;margin-inline:auto}
+  .head h2{font-size:clamp(1.9rem,4vw,3rem);line-height:1.1;margin:12px 0}
+  .head p{color:var(--muted)}
+
+  .white{background:#fff}
+  .services{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .svc{background:var(--mist);border-radius:var(--r);padding:32px;transition:.3s}
+  .svc:hover{background:var(--sky)}
+  .svc .ico{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:1.6rem;margin-bottom:20px}
+  .svc h3{font-size:1.4rem;margin-bottom:8px}
+  .svc p{color:var(--muted)}
+
+  .about{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  .about-img{border-radius:var(--r);aspect-ratio:4/5;background:linear-gradient(200deg,var(--sky),var(--sky2));position:relative;overflow:hidden}
+  .about-img svg{position:absolute;inset:0;width:100%;height:100%}
+  .about-img .quote{position:absolute;left:20px;right:20px;bottom:20px;background:rgba(255,255,255,.92);border-radius:20px;padding:18px;font-family:Fraunces;color:var(--deep)}
+  .values{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px}
+  .val{background:#fff;border-radius:20px;padding:20px}
+  .val b{display:block;color:var(--deep);margin-bottom:4px}
+  .val span{color:var(--muted);font-size:.92rem}
+
+  .faq{max-width:760px;margin:0 auto;display:grid;gap:12px}
+  details{background:var(--mist);border-radius:20px;padding:20px 24px}
+  summary{cursor:pointer;font-weight:700;color:var(--deep);list-style:none;display:flex;justify-content:space-between;gap:16px}
+  summary::after{content:"+";font-size:1.4rem;color:var(--ocean);line-height:1;transition:.2s}
+  details[open] summary::after{transform:rotate(45deg)}
+  details p{color:var(--muted);margin-top:10px}
+
+  .contact{background:var(--deep);color:#d4e6fb;border-radius:40px;padding:64px;display:grid;grid-template-columns:1.2fr 1fr;gap:40px}
+  .contact h2{color:#fff;font-size:clamp(1.9rem,4vw,2.8rem);line-height:1.1}
+  .info{display:grid;gap:16px}
+  .info div{background:rgba(255,255,255,.07);border-radius:20px;padding:18px 22px}
+  .info small{color:#8fb6e3;display:block}
+  .info b{color:#fff;font-size:1.1rem}
+
+  footer{text-align:center;padding:40px 0;color:var(--muted);font-size:.9rem}
+
+  @media (max-width:900px){
+    .hero-grid,.about,.contact{grid-template-columns:1fr}
+    .services{grid-template-columns:1fr 1fr}
+    .blob-wrap{max-width:440px;margin:0 auto;width:100%}
+  }
+  @media (max-width:720px){
+    .menu,.nav>.btn{display:none}
+    .burger{display:block}
+    .menu.open{display:flex;flex-direction:column;position:absolute;top:80px;left:16px;right:16px;border-radius:24px;padding:12px}
+    .menu.open a{padding:14px 18px}
+    .burger.open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+    .burger.open span:nth-child(2){opacity:0}
+    .burger.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+    .hero{padding:24px 0 100px}
+    .services,.values{grid-template-columns:1fr}
+    section{padding:64px 0}
+    .contact{padding:36px 22px;border-radius:28px}
+    .chip-1{left:0}.chip-2{right:0}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container nav">
+    <a href="#" class="logo">
+      <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#dff0ff"/><path d="M6 22c5-6 9-6 14 0s9 6 14 0" stroke="#2b6cb0" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
+      Modrá Vlna
+    </a>
+    <ul class="menu" id="menu">
+      <li><a href="#" class="active">Domov</a></li>
+      <li><a href="#sluzby">Služby</a></li>
+      <li><a href="#o-nas">O nás</a></li>
+      <li><a href="#faq">Otázky</a></li>
+      <li><a href="#kontakt">Kontakt</a></li>
+    </ul>
+    <a href="#kontakt" class="btn btn-ocean">Objednať</a>
+    <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="pill">🌿 Fyzioterapia s pokojom</span>
+      <h1>Vaše telo si zaslúži <i>jemnú</i> starostlivosť</h1>
+      <p>Pomáhame ľuďom zbaviť sa bolesti a znovu sa tešiť z pohybu. Pokojné prostredie, čas len pre vás a terapeut, ktorý naozaj počúva.</p>
+      <div class="hero-cta">
+        <a href="#kontakt" class="btn btn-ocean">Dohodnúť termín</a>
+        <a href="#sluzby" class="btn btn-soft">Čo ponúkame ↓</a>
+      </div>
+    </div>
+    <div class="blob-wrap">
+      <div class="blob">
+        <svg viewBox="0 0 200 220" fill="#fff">
+          <circle cx="100" cy="60" r="28" opacity=".95"/>
+          <path d="M40 220c0-50 25-110 60-110s60 60 60 110z" opacity=".95"/>
+          <path d="M60 140c-20-10-30-30-34-50" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+          <path d="M140 140c20-10 30-30 34-50" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+        </svg>
+      </div>
+      <div class="chip chip-1"><b>15 rokov</b>skúseností</div>
+      <div class="chip chip-2"><b>★ 4.9</b>320+ recenzií</div>
+    </div>
+  </div>
+  <svg class="wave" viewBox="0 0 1440 100" preserveAspectRatio="none"><path d="M0 60 C 360 0, 720 120, 1080 50 S 1440 40, 1440 40 V100 H0Z" fill="#fff"/></svg>
+</section>
+
+<section id="sluzby" class="white" style="padding-top:40px">
+  <div class="container">
+    <div class="head center">
+      <span class="pill">Služby</span>
+      <h2>Ako vám môžeme pomôcť</h2>
+      <p>Každá terapia je prispôsobená vášmu telu, tempu a cieľom.</p>
+    </div>
+    <div class="services">
+      <div class="svc"><div class="ico">🦴</div><h3>Chrbtica a krk</h3><p>Uľavíme od bolesti chrbta, šije a hlavy spôsobenej sedavou prácou.</p></div>
+      <div class="svc"><div class="ico">🤰</div><h3>Tehotenstvo a po pôrode</h3><p>Panvové dno, diastáza a jemná príprava tela na materstvo.</p></div>
+      <div class="svc"><div class="ico">🧘</div><h3>Terapeutické cvičenie</h3><p>Pilates, stabilizácia a dychové cvičenia v malých skupinách.</p></div>
+      <div class="svc"><div class="ico">💆</div><h3>Mäkké techniky</h3><p>Masáže, myofasciálne uvoľnenie a lymfodrenáž.</p></div>
+      <div class="svc"><div class="ico">🦵</div><h3>Kĺby a rehabilitácia</h3><p>Koleno, rameno a bedro po úrazoch aj operáciách.</p></div>
+      <div class="svc"><div class="ico">👵</div><h3>Seniori</h3><p>Rovnováha, prevencia pádov a udržanie sebestačnosti.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="o-nas">
+  <div class="container about">
+    <div class="about-img">
+      <svg viewBox="0 0 400 500" fill="none">
+        <circle cx="300" cy="100" r="80" fill="#fff" opacity=".4"/>
+        <path d="M0 360 C 100 300, 200 420, 400 340 V500 H0Z" fill="#2b6cb0" opacity=".25"/>
+        <path d="M0 400 C 120 350, 260 460, 400 390 V500 H0Z" fill="#2b6cb0" opacity=".35"/>
+      </svg>
+      <div class="quote">„Najlepšia terapia začína rozhovorom.“<br><small style="font-family:DM Sans;color:var(--muted)">— Mgr. Eva Bielik, zakladateľka</small></div>
+    </div>
+    <div>
+      <span class="pill">O nás</span>
+      <div class="head" style="margin:12px 0 0"><h2>Malé štúdio s veľkým srdcom</h2>
+      <p>Modrá Vlna vznikla z túžby robiť fyzioterapiu inak – bez náhlenia, s dôrazom na človeka. Na každého klienta máme celú hodinu a spolu hľadáme cestu k telu bez bolesti.</p></div>
+      <div class="values">
+        <div class="val"><b>Čas pre vás</b><span>60 minút bez zhonu</span></div>
+        <div class="val"><b>Celostný prístup</b><span>Telo, dych aj myseľ</span></div>
+        <div class="val"><b>Malé skupiny</b><span>Max. 5 ľudí na cvičení</span></div>
+        <div class="val"><b>Domáci plán</b><span>Cvičenia na doma</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="white">
+  <div class="container">
+    <div class="head center"><span class="pill">Otázky</span><h2>Často sa pýtate</h2></div>
+    <div class="faq">
+      <details open><summary>Potrebujem odporúčanie od lekára?</summary><p>Nie, k nám sa môžete objednať priamo. Ak máte lekárske správy alebo snímky, prineste ich na prvé stretnutie.</p></details>
+      <details><summary>Čo si mám priniesť na terapiu?</summary><p>Pohodlné oblečenie, uterák a prípadné lekárske správy. O ostatné sa postaráme.</p></details>
+      <details><summary>Koľko terapií budem potrebovať?</summary><p>Záleží od problému. Väčšina klientov pocíti úľavu po 3–6 stretnutiach. Plán prejdeme spolu po prvom vyšetrení.</p></details>
+      <details><summary>Prepláca terapiu poisťovňa?</summary><p>Terapie sú samoplatcovské. Vystavíme potvrdenie, ktoré môžete uplatniť u zamestnávateľa alebo v rámci benefitov.</p></details>
+    </div>
+  </div>
+</section>
+
+<section id="kontakt">
+  <div class="container">
+    <div class="contact">
+      <div>
+        <h2>Urobte prvý krok k telu bez bolesti</h2>
+        <p style="margin:16px 0 28px">Napíšte nám alebo zavolajte – radi poradíme, aká terapia je pre vás vhodná.</p>
+        <a href="tel:+421900111222" class="btn btn-soft">📞 Zavolať teraz</a>
+      </div>
+      <div class="info">
+        <div><small>Adresa</small><b>Záhradná 3, Žilina</b></div>
+        <div><small>Telefón</small><b>+421 900 111 222</b></div>
+        <div><small>Otvorené</small><b>Po–Pi 8:00–19:00</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>© 2026 Modrá Vlna – fyzioterapeutické štúdio</footer>
+
+<script>
+  const b=document.getElementById('burger'),m=document.getElementById('menu');
+  b.addEventListener('click',()=>{b.classList.toggle('open');m.classList.toggle('open')});
+  m.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{b.classList.remove('open');m.classList.remove('open')}));
+</script>
+</body>
+</html>

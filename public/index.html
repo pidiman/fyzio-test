@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FyzioPlus – fyzioterapia</title>
+<meta name="description" content="Moderná fyzioterapia s online rezerváciou termínov.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container nav">
+    <a href="#" class="logo"><span class="logo-mark">✚</span>FyzioPlus</a>
+    <ul class="menu" id="menu">
+      <li><a href="#sluzby">Procedúry</a></li>
+      <li><a href="#preco">Prečo my</a></li>
+      <li><a href="#tim">Tím</a></li>
+      <li><a href="#rezervacia">Rezervácia</a></li>
+      <li><a href="#kontakt">Kontakt</a></li>
+    </ul>
+    <a href="#rezervacia" class="btn btn-primary">Objednať sa</a>
+    <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="badge">● Online rezervácia 24/7</span>
+      <h1>Pohyb bez bolesti.<br><em>Život naplno.</em></h1>
+      <p>Moderná fyzioterapia v centre mesta. Individuálny prístup, overené metódy a tím certifikovaných terapeutov, ktorí vás postavia na nohy.</p>
+      <div class="hero-cta">
+        <a href="#rezervacia" class="btn btn-primary">Rezervovať termín →</a>
+        <a href="#sluzby" class="btn btn-ghost">Procedúry a ceny</a>
+      </div>
+      <div class="hero-stats">
+        <div><strong>12+</strong><span>rokov praxe</span></div>
+        <div><strong>4 800</strong><span>klientov</span></div>
+        <div><strong>4.9★</strong><span>hodnotenie</span></div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <svg viewBox="0 0 400 400" fill="none">
+        <circle cx="320" cy="80" r="120" fill="rgba(255,255,255,.08)"/>
+        <circle cx="60" cy="360" r="140" fill="rgba(255,255,255,.06)"/>
+        <path d="M200 70 C 180 140, 220 200, 200 270 C 185 320, 205 340, 200 350" stroke="#fff" stroke-width="3" opacity=".9"/>
+        <g fill="#fff">
+          <rect x="182" y="80" width="36" height="16" rx="8"/>
+          <rect x="178" y="108" width="40" height="17" rx="8"/>
+          <rect x="182" y="137" width="42" height="18" rx="9"/>
+          <rect x="190" y="167" width="42" height="18" rx="9"/>
+          <rect x="190" y="197" width="42" height="18" rx="9"/>
+          <rect x="182" y="227" width="44" height="19" rx="9"/>
+          <rect x="176" y="258" width="46" height="20" rx="10"/>
+          <rect x="178" y="290" width="44" height="20" rx="10"/>
+        </g>
+        <path d="M120 180 q 80 -40 160 0" stroke="#e8d3bd" stroke-width="2" stroke-dasharray="6 6"/>
+        <path d="M110 240 q 90 40 180 0" stroke="#e8d3bd" stroke-width="2" stroke-dasharray="6 6"/>
+      </svg>
+      <div class="float-card fc1"><div class="ic">✓</div><div><b>Diagnostika</b><br><small>60 min vstupné vyšetrenie</small></div></div>
+      <div class="float-card fc2"><div class="ic">★</div><div><b>98 %</b><br><small>spokojných klientov</small></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="sluzby">
+  <div class="container">
+    <div class="sec-head">
+      <span class="eyebrow">Procedúry a cenník</span>
+      <h2>Komplexná starostlivosť o vaše telo</h2>
+      <p>Od akútnej bolesti chrbta až po návrat k športu – vyberte si procedúru a objednajte sa online.</p>
+    </div>
+    <div class="services" id="services"><p class="loading">Načítavam procedúry…</p></div>
+  </div>
+</section>
+
+<section id="preco" style="padding-top:0">
+  <div class="container">
+    <div class="why">
+      <div>
+        <span class="eyebrow">Prečo FyzioPlus</span>
+        <h2>Liečime príčinu, nie len príznaky</h2>
+        <p>Každá terapia začína dôkladnou diagnostikou pohybového aparátu. Na základe nej vytvoríme plán, ktorý vám dá jasný cieľ a merateľný pokrok.</p>
+      </div>
+      <ul class="checks">
+        <li><span class="tick">✓</span><div><b>Certifikovaní terapeuti</b>Neustále vzdelávanie v najnovších metódach.</div></li>
+        <li><span class="tick">✓</span><div><b>Moderné prístroje</b>Rázová vlna, laser, magnetoterapia.</div></li>
+        <li><span class="tick">✓</span><div><b>Cvičenia domov</b>Plán cvičení, ktorý si odnesiete so sebou.</div></li>
+        <li><span class="tick">✓</span><div><b>Online rezervácia</b>Termín si vyberiete za 30 sekúnd.</div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="tim" style="padding-top:0">
+  <div class="container">
+    <div class="sec-head"><span class="eyebrow">Náš tím</span><h2>Ľudia, ktorým môžete dôverovať</h2></div>
+    <div class="team">
+      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="38" r="20" fill="#fff"/><path d="M14 100c0-22 16-36 36-36s36 14 36 36z" fill="#fff"/></svg></div><h4>Mgr. Peter Novák</h4><span>Vedúci fyzioterapeut</span></div>
+      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="38" r="20" fill="#fff"/><path d="M14 100c0-22 16-36 36-36s36 14 36 36z" fill="#fff"/></svg></div><h4>Mgr. Jana Kováčová</h4><span>Športová fyzioterapia</span></div>
+      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="38" r="20" fill="#fff"/><path d="M14 100c0-22 16-36 36-36s36 14 36 36z" fill="#fff"/></svg></div><h4>Bc. Martin Horák</h4><span>Manuálna terapia</span></div>
+      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="38" r="20" fill="#fff"/><path d="M14 100c0-22 16-36 36-36s36 14 36 36z" fill="#fff"/></svg></div><h4>Mgr. Lucia Malá</h4><span>Detská fyzioterapia</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="rezervacia" style="padding-top:0">
+  <div class="container">
+    <div class="sec-head">
+      <span class="eyebrow">Online rezervácia</span>
+      <h2>Objednajte sa na procedúru</h2>
+      <p>Vyberte procedúru, deň a voľný čas. Termín vám potvrdíme telefonicky alebo e-mailom.</p>
+    </div>
+
+    <div class="booking" id="booking">
+      <div class="steps">
+        <div class="step">
+          <div class="step-h"><span>1</span><h3>Procedúra</h3></div>
+          <div class="proc-list" id="proc-list"></div>
+        </div>
+        <div class="step">
+          <div class="step-h"><span>2</span><h3>Deň</h3></div>
+          <div class="days" id="days"></div>
+        </div>
+        <div class="step">
+          <div class="step-h"><span>3</span><h3>Čas</h3></div>
+          <div class="slots" id="slots"><p class="hint">Najprv vyberte procedúru a deň.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-h"><span>4</span><h3>Vaše údaje</h3></div>
+          <form class="fields" id="contact" novalidate>
+            <label>Meno a priezvisko *<input name="name" required minlength="3" autocomplete="name"></label>
+            <label>Telefón *<input name="phone" type="tel" required pattern="\+?[\d\s\/\-]{6,}" autocomplete="tel" placeholder="+421 9xx xxx xxx"></label>
+            <label class="full">E-mail<input name="email" type="email" autocomplete="email"></label>
+            <label class="full">Poznámka<textarea name="note" rows="3" maxlength="1000" placeholder="S čím vám môžeme pomôcť?"></textarea></label>
+          </form>
+        </div>
+      </div>
+
+      <aside class="summary">
+        <h3>Súhrn rezervácie</h3>
+        <dl id="summary"></dl>
+        <button class="btn btn-primary" id="submit" disabled>Potvrdiť rezerváciu</button>
+        <p class="err" id="err" role="alert"></p>
+      </aside>
+    </div>
+
+    <div class="done" id="done" hidden>
+      <div class="ok">✓</div>
+      <h3>Ďakujeme, rezervácia je odoslaná</h3>
+      <p id="done-text"></p>
+      <button class="btn btn-ghost" id="again">Nová rezervácia</button>
+    </div>
+  </div>
+</section>
+
+<section id="kontakt" style="padding-top:0;padding-bottom:0">
+  <div class="container">
+    <div class="cta">
+      <div><h2>Radšej telefonicky?</h2><p style="opacity:.8">Zavolajte na +421 900 123 456, radi vás objednáme.</p></div>
+      <a href="tel:+421900123456" class="btn">Zavolať →</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="foot">
+      <div><a href="#" class="logo" style="margin-bottom:12px"><span class="logo-mark">✚</span>FyzioPlus</a><p>Hlavná 12, 811 01 Bratislava<br>info@fyzioplus.sk</p></div>
+      <div><h5>Klinika</h5><ul><li><a href="#preco">O nás</a></li><li><a href="#tim">Tím</a></li><li><a href="#sluzby">Cenník</a></li></ul></div>
+      <div><h5>Kontakt</h5><ul><li>+421 900 123 456</li><li>info@fyzioplus.sk</li></ul></div>
+      <div><h5>Otváracie hodiny</h5><ul class="hours" id="hours"></ul></div>
+    </div>
+    <div class="copy">© 2026 FyzioPlus. Všetky práva vyhradené.</div>
+  </div>
+</footer>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
