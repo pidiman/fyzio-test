@@ -11,7 +11,7 @@ docker image prune -f >/dev/null
 
 # počkať, kým web odpovedá
 for i in $(seq 1 30); do
-  if curl -fsS -o /dev/null http://127.0.0.1:8092/api/info; then
+  if curl -fs -o /dev/null http://127.0.0.1:8092/api/info; then
     echo "Nasadené: $(git log -1 --format='%h %s')"
     exit 0
   fi
