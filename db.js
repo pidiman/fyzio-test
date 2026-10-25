@@ -114,6 +114,13 @@ db.exec(`
     client_id  INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
     expires_at INTEGER NOT NULL
   );
+
+  -- odkazy na potvrdenie e-mailu po registrácii (ukladá sa len hash tokenu)
+  CREATE TABLE IF NOT EXISTS client_tokens (
+    token_hash TEXT    PRIMARY KEY,
+    client_id  INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  );
 `);
 
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
@@ -144,6 +151,14 @@ if (!hasColumn('bookings', 'room_id')) {
   `);
 }
 // rezervácia prihláseného klienta; po zrušení účtu ostane rezervácia bez väzby na účet
+// verified_at = kedy klient potvrdil e-mail (NULL = nepotvrdený, nedá sa prihlásiť);
+// účty z čias pred overovaním sa považujú za potvrdené
+if (!hasColumn('clients', 'verified_at')) {
+  db.exec(`
+    ALTER TABLE clients ADD COLUMN verified_at TEXT;
+    UPDATE clients SET verified_at = created_at;
+  `);
+}
 if (!hasColumn('bookings', 'client_id')) {
   db.exec('ALTER TABLE bookings ADD COLUMN client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL');
 }

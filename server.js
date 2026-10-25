@@ -6,7 +6,7 @@ import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
 import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
-  notifyClientRegistered,
+  notifyClientVerify,
 } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -304,20 +304,54 @@ app.post('/api/client/register', rateLimit(5, 3600e3), (req, res) => {
   if (body.gdpr !== true) throw bad('Bez súhlasu so spracúvaním osobných údajov sa nie je možné zaregistrovať.');
   const c = clientInput(body);
   if (typeof body.password !== 'string' || body.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
-  if (clientEmailTaken(c.email)) throw new HttpError(409, 'Účet s týmto e-mailom už existuje – prihláste sa.');
-  const id = Number(db.prepare(`
-    INSERT INTO clients (email, password_hash, name, phone, gdpr_consent_at) VALUES (?, ?, ?, ?, datetime('now'))
-  `).run(c.email, hashPassword(body.password), c.name, c.phone).lastInsertRowid);
-  startClientSession(req, res, id);
-  const client = clientProfile(id);
-  notifyClientRegistered(client);
-  res.status(201).json(client);
+  const existing = db.prepare('SELECT id, verified_at FROM clients WHERE email = ?').get(c.email);
+  if (existing?.verified_at) throw new HttpError(409, 'Účet s týmto e-mailom už existuje – prihláste sa.');
+  let id = existing?.id;
+  // nepotvrdený účet s rovnakým e-mailom (napr. stratený e-mail s odkazom) sa prepíše novými údajmi
+  if (id) {
+    db.prepare(`UPDATE clients SET password_hash = ?, name = ?, phone = ?, gdpr_consent_at = datetime('now') WHERE id = ?`)
+      .run(hashPassword(body.password), c.name, c.phone, id);
+  } else {
+    id = Number(db.prepare(`
+      INSERT INTO clients (email, password_hash, name, phone, gdpr_consent_at) VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(c.email, hashPassword(body.password), c.name, c.phone).lastInsertRowid);
+  }
+  sendClientVerification(req, id);
+  res.status(201).json({ email: c.email });
+});
+
+const VERIFY_MS = 3 * 24 * 3600e3;
+
+function sendClientVerification(req, clientId) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM client_tokens WHERE client_id = ? OR expires_at < ?').run(clientId, Date.now());
+  db.prepare('INSERT INTO client_tokens (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
+    .run(tokenHash(token), clientId, Date.now() + VERIFY_MS);
+  // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
+  notifyClientVerify(clientProfile(clientId), `${baseUrl(req)}/#overenie=${token}`);
+}
+
+// potvrdenie e-mailu odkazom z registračného e-mailu; klient sa zároveň prihlási
+app.post('/api/client/verify', rateLimit(20, 15 * 60e3), (req, res) => {
+  const { token } = req.body ?? {};
+  const row = typeof token === 'string' &&
+    db.prepare('SELECT client_id FROM client_tokens WHERE token_hash = ? AND expires_at > ?').get(tokenHash(token), Date.now());
+  if (!row) throw bad('Odkaz je neplatný alebo vypršal. Prihláste sa e-mailom a heslom a pošleme vám nový.');
+  db.prepare("UPDATE clients SET verified_at = datetime('now') WHERE id = ?").run(row.client_id);
+  db.prepare('DELETE FROM client_tokens WHERE client_id = ?').run(row.client_id);
+  startClientSession(req, res, row.client_id);
+  res.json(clientProfile(row.client_id));
 });
 
 app.post('/api/client/login', rateLimit(10, 15 * 60e3), (req, res) => {
-  const client = db.prepare('SELECT id, password_hash FROM clients WHERE email = ?').get(str(req.body?.email, 120));
+  const client = db.prepare('SELECT id, password_hash, verified_at FROM clients WHERE email = ?').get(str(req.body?.email, 120));
   const ok = verifyPassword(String(req.body?.password ?? ''), client?.password_hash ?? DUMMY_HASH);
   if (!client || !ok) throw new HttpError(401, 'Nesprávny e-mail alebo heslo.');
+  // nepotvrdený účet: pošle sa nový odkaz (starý mohol vypršať alebo sa stratiť)
+  if (!client.verified_at) {
+    sendClientVerification(req, client.id);
+    throw new HttpError(403, 'Účet ešte nie je potvrdený. Poslali sme vám nový e-mail s odkazom na potvrdenie.');
+  }
   startClientSession(req, res, client.id);
   res.json(clientProfile(client.id));
 });
@@ -798,7 +832,7 @@ app.delete('/api/admin/users/:id', (req, res) => {
 
 app.get('/api/admin/clients', (req, res) => {
   res.json(db.prepare(`
-    SELECT c.id, c.name, c.email, c.phone, c.gdpr_consent_at, c.created_at,
+    SELECT c.id, c.name, c.email, c.phone, c.gdpr_consent_at, c.created_at, c.verified_at,
            (SELECT COUNT(*) FROM bookings b WHERE b.client_id = c.id) AS bookings
     FROM clients c ORDER BY c.created_at DESC
   `).all());

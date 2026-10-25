@@ -316,11 +316,22 @@ const registerForm = $('#register-form');
 const gdpr = registerForm.elements.gdpr;
 registerForm.addEventListener('change', () => { registerForm.querySelector('button').disabled = !gdpr.checked; });
 
+function notice(title, text, ok = true) {
+  $('#notice-icon').textContent = ok ? '✓' : '!';
+  $('#notice-title').textContent = title;
+  $('#notice-text').textContent = text;
+  $('#notice').showModal();
+}
+
+// po registrácii sa klient neprihlási – najprv musí potvrdiť e-mail odkazom
 onSubmit(registerForm, async (data) => {
   if (!gdpr.checked) throw new Error('Pre registráciu musíte súhlasiť so spracúvaním osobných údajov.');
-  setClient(await send('/api/client/register', 'POST', { ...data, gdpr: true }));
+  const { email } = await send('/api/client/register', 'POST', { ...data, gdpr: true });
   registerForm.reset();
   $('#auth').close();
+  notice('Registrácia prebehla úspešne',
+    `Na adresu ${email} sme poslali e-mail s odkazom na potvrdenie účtu. Po kliknutí na odkaz budete prihlásení. ` +
+    'Odkaz platí 3 dni – ak e-mail nevidíte, pozrite aj priečinok so spamom.');
 });
 
 onSubmit($('#profile-form'), async (data) => {
@@ -361,7 +372,20 @@ document.addEventListener('click', (e) => {
 });
 
 renderAccount();
-api('/api/client/me').then(setClient).catch(() => {});
+// odkaz z e-mailu: /#overenie=<token>
+const verifyToken = /^#overenie=([\w-]+)$/.exec(location.hash)?.[1];
+if (verifyToken) {
+  history.replaceState(null, '', location.pathname + location.search);
+  send('/api/client/verify', 'POST', { token: verifyToken }).then(
+    (client) => {
+      setClient(client);
+      notice('Účet je potvrdený', `Vitajte, ${client.name}! Ste prihlásení a pri rezervácii sa vaše údaje vyplnia automaticky.`);
+    },
+    (err) => notice('Účet sa nepodarilo potvrdiť', err.message, false)
+  );
+} else {
+  api('/api/client/me').then(setClient).catch(() => {});
+}
 
 const burger = $('#burger'), menu = $('#menu');
 burger.addEventListener('click', () => { burger.classList.toggle('open'); menu.classList.toggle('open'); });

@@ -709,7 +709,7 @@ function renderClients() {
   $('#clients').innerHTML = shown.map((c) => `
     <div class="pr us">
       <div class="ic">👤</div>
-      <div><b>${esc(c.name)}</b>
+      <div><b>${esc(c.name)}</b>${c.verified_at ? '' : ' <span class="warn">nepotvrdený e-mail</span>'}
         <p>${[esc(c.email), c.phone && esc(c.phone), `rezervácií: ${c.bookings}`].filter(Boolean).join(' · ')}</p>
         <p>Registrácia ${fmtStamp(c.created_at)} · súhlas GDPR ${fmtStamp(c.gdpr_consent_at)}</p></div>
       <div class="bk-actions pr-actions">
