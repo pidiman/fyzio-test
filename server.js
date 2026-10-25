@@ -6,6 +6,7 @@ import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
 import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
+  notifyClientRegistered,
 } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -308,7 +309,9 @@ app.post('/api/client/register', rateLimit(5, 3600e3), (req, res) => {
     INSERT INTO clients (email, password_hash, name, phone, gdpr_consent_at) VALUES (?, ?, ?, ?, datetime('now'))
   `).run(c.email, hashPassword(body.password), c.name, c.phone).lastInsertRowid);
   startClientSession(req, res, id);
-  res.status(201).json(clientProfile(id));
+  const client = clientProfile(id);
+  notifyClientRegistered(client);
+  res.status(201).json(client);
 });
 
 app.post('/api/client/login', rateLimit(10, 15 * 60e3), (req, res) => {

@@ -261,6 +261,30 @@ export function notifyNewBooking(b) {
   sendLater(b.email, clientEmails.received(b));
 }
 
+// Uvítací e-mail po registrácii klienta na webe (zároveň potvrdenie udeleného súhlasu GDPR)
+export function notifyClientRegistered(c) {
+  const { url } = contact();
+  const consent = new Date().toLocaleDateString('sk-SK', { timeZone: process.env.TIMEZONE || 'Europe/Bratislava' });
+  const rows = [['Meno', c.name], ['E-mail', c.email], ['Telefón', c.phone || '—'], ['Súhlas GDPR', `udelený ${consent}`]];
+  const intro = `ďakujeme za registráciu na webe ${SITE_NAME}. Pri ďalších rezerváciách sa stačí prihlásiť ` +
+    'a vaše údaje sa vyplnia automaticky.';
+  const gdpr = 'Údaje si môžete kedykoľvek upraviť v časti „Môj účet“. Tam môžete účet aj zrušiť – tým odvoláte súhlas ' +
+    'so spracúvaním osobných údajov a údaje účtu vymažeme.';
+  sendLater(c.email, {
+    subject: `Vitajte – ${SITE_NAME}`,
+    text: `Dobrý deň, ${c.name},\n\n${intro}\n\n` +
+      rows.map(([k, v]) => `${(k + ':').padEnd(13)}${v}`).join('\n') +
+      `\n\n${gdpr}${url ? `\n\nRezervovať termín: ${url}/#rezervacia` : ''}${signature()}`,
+    html: emailHtml({
+      preheader: 'Váš účet je pripravený – pri rezervácii sa už stačí prihlásiť.',
+      eyebrow: 'Registrácia', title: 'Vitajte', name: c.name, rows,
+      lines: [esc(intro), esc(gdpr), 'Ak ste sa neregistrovali vy, dajte nám prosím vedieť.'],
+      button: url ? { label: 'Rezervovať termín', href: `${url}/#rezervacia` } : callButton(),
+      footnote: 'Tento e-mail bol odoslaný automaticky po registrácii na webe.',
+    }),
+  });
+}
+
 export function notifyStatus(b, status) {
   if (clientEmails[status]) sendLater(b.email, clientEmails[status](b));
 }
