@@ -152,6 +152,10 @@
         <label>Pozícia<input name="title" maxlength="100" placeholder="napr. Športová fyzioterapia"></label>
         <label>Poradie<input name="sort" type="number" value="0"></label>
         <label class="check"><input type="checkbox" name="active" checked> Aktívny – na webe a prijíma rezervácie</label>
+        <label class="full">Bio – o mne
+          <textarea name="bio" rows="5" maxlength="2000" placeholder="Vzdelanie, prax, na čo sa špecializuje… Prázdny riadok = nový odsek."></textarea>
+        </label>
+        <p class="muted full">Ak je bio vyplnené, na webe sa po kliknutí na fotku otvorí profil terapeuta.</p>
         <fieldset class="full">
           <legend>Procedúry, ktoré robí</legend>
           <div class="checks" id="member-procs"></div>
@@ -261,6 +265,9 @@
         <label>Prihlasovacie meno<input name="username" disabled></label>
         <label>E-mail<input name="email" type="email" maxlength="120" autocomplete="email"></label>
         <label>Telefón<input name="phone" type="tel" maxlength="30" autocomplete="tel" placeholder="+421 9xx xxx xxx"></label>
+        <label class="full" id="profile-bio">O mne – bio na webe
+          <textarea name="bio" rows="6" maxlength="2000" placeholder="Vzdelanie, prax, na čo sa špecializujete… Prázdny riadok = nový odsek."></textarea>
+        </label>
         <div class="full form-actions"><button class="btn btn-primary">Uložiť profil</button></div>
       </form>
       <form class="panel form-grid" id="password-form">

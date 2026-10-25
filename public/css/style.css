@@ -95,6 +95,11 @@ section{padding:104px 0}
 .avatar img{width:100%;height:100%;object-fit:cover}
 .member h4{font-size:1.15rem}
 .member span{color:var(--muted);font-size:.8rem;letter-spacing:.14em;text-transform:uppercase}
+.member.has-bio{display:block;align-self:start;width:100%;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}
+.member.has-bio .avatar{transition:.3s}
+.member.has-bio:hover .avatar{box-shadow:var(--shadow);transform:translateY(-4px)}
+.member.has-bio:focus-visible{outline:2px solid var(--brass);outline-offset:6px}
+.member em{display:table;margin:8px auto 0;font-style:normal;font-size:.75rem;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--ink);border-bottom:1px solid var(--taupe)}
 
 /* Booking */
 .booking-sec{padding-top:0}
@@ -166,7 +171,7 @@ section{padding:104px 0}
 .account-hint b{color:var(--ink);font-weight:500}
 .link{background:none;border:0;padding:0;font:inherit;color:var(--ink);border-bottom:1px solid var(--taupe);cursor:pointer}
 .link:hover{color:var(--taupe-d)}
-.modal{position:relative;width:min(480px,100% - 32px);max-height:calc(100dvh - 32px);margin:auto;background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:40px 32px 32px;box-shadow:var(--shadow);color:var(--text)}
+.modal{width:min(480px,100% - 32px);max-height:calc(100dvh - 32px);margin:auto;background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:40px 32px 32px;box-shadow:var(--shadow);color:var(--text)}
 .modal::backdrop{background:rgba(46,42,38,.55);backdrop-filter:blur(3px)}
 .modal h3{font-size:1.5rem;margin-bottom:20px}
 .modal .x{position:absolute;top:10px;right:12px;width:40px;height:40px;background:none;border:0;font-size:1.6rem;line-height:1;color:var(--muted);cursor:pointer}
@@ -194,6 +199,18 @@ section{padding:104px 0}
 .privacy p b{color:var(--ink);font-weight:500}
 .privacy a{border-bottom:1px solid var(--taupe)}
 .privacy .btn{margin-top:8px}
+
+/* Profil terapeuta */
+.therapist{width:min(760px,100% - 32px)}
+.tp{display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start}
+.tp-photo{aspect-ratio:3/4;border-radius:999px 999px 4px 4px;background:linear-gradient(180deg,var(--linen),var(--taupe));display:grid;place-items:end center;overflow:hidden}
+.tp-photo img{width:100%;height:100%;object-fit:cover}
+.tp-photo svg{width:72%;fill:rgba(255,255,255,.75)}
+.tp-text h3{margin:8px 0 16px}
+.tp-bio p{color:var(--text);font-weight:300;margin-bottom:12px}
+.tp-text h5{margin:20px 0 10px;font-size:.75rem;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--taupe-d)}
+.tp-procs{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+.tp-procs li{background:var(--shell);padding:6px 12px;border-radius:999px;font-size:.85rem;color:var(--ink-2)}
 
 /* Moje rezervácie */
 .my-sec{background:var(--shell)}
@@ -285,6 +302,8 @@ footer .logo small{color:var(--taupe)}
   .nav-actions{margin-left:auto;margin-right:8px}
   .modal{padding:36px 20px 24px}
   .cal{padding:16px}
+  .tp{grid-template-columns:1fr;gap:20px}
+  .tp-photo{width:min(200px,60%);margin:0 auto}
   .mb{grid-template-columns:auto minmax(0,1fr)}
   .mb-side{grid-column:2;flex-direction:row;align-items:center;justify-content:space-between}
   .menu.open{display:flex;flex-direction:column;position:absolute;top:76px;left:0;right:0;background:var(--cream);padding:24px 16px;gap:18px;border-bottom:1px solid var(--linen);box-shadow:var(--shadow)}

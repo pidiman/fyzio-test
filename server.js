@@ -159,7 +159,7 @@ app.get('/api/procedures', async (req, res) => {
 app.get('/api/team', async (req, res) => {
   const links = await db.all('SELECT procedure_id, member_id FROM procedure_members');
   res.json(
-    (await db.all('SELECT id, name, title, photo FROM team_members WHERE active = 1 ORDER BY sort, name')).map((m) => ({
+    (await db.all('SELECT id, name, title, photo, bio FROM team_members WHERE active = 1 ORDER BY sort, name')).map((m) => ({
       ...m,
       photo: m.photo ? `/media/${m.photo}` : '',
       procedures: links.filter((l) => l.member_id === m.id).map((l) => l.procedure_id),
@@ -515,7 +515,7 @@ app.use(
 async function profile(userId) {
   const p = await db.get(`
     SELECT u.id, u.username, u.role, u.member_id, u.email, u.phone, m.name AS member_name,
-           COALESCE(m.name, u.name) AS name, COALESCE(m.photo, u.photo) AS photo
+           COALESCE(m.name, u.name) AS name, COALESCE(m.photo, u.photo) AS photo, COALESCE(m.bio, '') AS bio
     FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
   `, userId);
   return { ...p, photo: p.photo ? `/media/${p.photo}` : '' };
@@ -543,7 +543,10 @@ app.put('/api/admin/me/profile', async (req, res) => {
   else if (body.photo === null) photo = '';
 
   await db.tx(async (t) => {
-    if (linked) await t.run('UPDATE team_members SET name = ?, photo = ? WHERE id = ?', name, photo, user.member_id);
+    // bio patrí členovi tímu – účet bez napojenia na tím ho nemá
+    if (linked) {
+      await t.run('UPDATE team_members SET name = ?, photo = ?, bio = ? WHERE id = ?', name, photo, str(body.bio, 2000), user.member_id);
+    }
     await t.run('UPDATE users SET name = ?, email = ?, phone = ?, photo = ? WHERE id = ?',
       name, email, phone, linked ? user.photo : photo, req.user.id);
   });
@@ -786,6 +789,7 @@ function memberInput(body = {}) {
   const m = {
     name: str(body.name, 100),
     title: str(body.title, 100),
+    bio: str(body.bio, 2000),
     active: body.active ? 1 : 0,
     sort: num(Math.round(Number(body.sort)) || 0),
     procedures: ids(body.procedures),
@@ -796,11 +800,11 @@ function memberInput(body = {}) {
 
 const saveMember = (id, m, photo) => db.tx(async (t) => {
   if (id) {
-    await t.run('UPDATE team_members SET name = ?, title = ?, active = ?, sort = ?, photo = ? WHERE id = ?',
-      m.name, m.title, m.active, m.sort, photo, id);
+    await t.run('UPDATE team_members SET name = ?, title = ?, bio = ?, active = ?, sort = ?, photo = ? WHERE id = ?',
+      m.name, m.title, m.bio, m.active, m.sort, photo, id);
   } else {
-    ({ id } = await t.run('INSERT INTO team_members (name, title, active, sort, photo) VALUES (?, ?, ?, ?, ?) RETURNING id',
-      m.name, m.title, m.active, m.sort, photo));
+    ({ id } = await t.run('INSERT INTO team_members (name, title, bio, active, sort, photo) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+      m.name, m.title, m.bio, m.active, m.sort, photo));
   }
   await t.run('DELETE FROM procedure_members WHERE member_id = ?', id);
   for (const procedureId of m.procedures) {

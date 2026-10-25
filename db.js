@@ -95,6 +95,8 @@ await db.exec(`
     active integer NOT NULL DEFAULT 1,
     sort   integer NOT NULL DEFAULT 0
   );
+  -- bio = text „o mne“ v profile na webe (vypĺňa admin alebo terapeut sám)
+  ALTER TABLE team_members ADD COLUMN IF NOT EXISTS bio text NOT NULL DEFAULT '';
 
   CREATE TABLE IF NOT EXISTS procedure_members (
     procedure_id integer NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,

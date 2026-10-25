@@ -540,6 +540,7 @@ function openMemberForm(m) {
   f.id.value = m?.id ?? '';
   f.name.value = m?.name ?? '';
   f.title.value = m?.title ?? '';
+  f.bio.value = m?.bio ?? '';
   f.sort.value = m?.sort ?? team.length;
   f.active.checked = m ? !!m.active : true;
   $('#member-procs').innerHTML = procedures.map((p) => `
@@ -588,7 +589,7 @@ memberForm.addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const f = memberForm.elements;
   const body = {
-    name: f.name.value, title: f.title.value, sort: f.sort.value, active: f.active.checked,
+    name: f.name.value, title: f.title.value, bio: f.bio.value, sort: f.sort.value, active: f.active.checked,
     procedures: [...$('#member-procs').querySelectorAll('input:checked')].map((i) => Number(i.value)),
   };
   if (photoChange !== undefined) body.photo = photoChange;
@@ -751,9 +752,12 @@ function loadProfile() {
   f.username.value = me.username;
   f.email.value = me.email || '';
   f.phone.value = me.phone || '';
+  f.bio.value = me.bio || '';
+  // bio má len účet napojený na člena tímu
+  $('#profile-bio').hidden = !me.member_id;
   renderProfilePhoto(me.photo);
   $('#profile-hint').textContent = me.member_id
-    ? 'Meno a fotka sa zobrazujú na webe v sekcii Tím. E-mail a telefón vidí len administrácia.'
+    ? 'Meno, fotka a bio sa zobrazujú na webe v sekcii Tím (bio po kliknutí na fotku). E-mail a telefón vidí len administrácia.'
     : 'E-mail slúži na odkaz pri zabudnutom hesle a upozornenia.';
 }
 
@@ -775,7 +779,7 @@ $('#profile-photo-remove').addEventListener('click', () => {
 profileForm.addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const f = profileForm.elements;
-  const body = { name: f.name.value, email: f.email.value, phone: f.phone.value };
+  const body = { name: f.name.value, email: f.email.value, phone: f.phone.value, bio: f.bio.value };
   if (profilePhoto !== undefined) body.photo = profilePhoto;
   me = await api('/api/admin/me/profile', { method: 'PUT', body });
   renderMe();

@@ -41,14 +41,60 @@ function renderServices() {
 
 const AVATAR = '<svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg>';
 
+// člen tímu s vyplneným bio je tlačidlo, ktoré otvorí jeho profil
 function renderTeam() {
   $('#tim').hidden = $('#menu-tim').hidden = !state.team.length;
-  $('#team').innerHTML = state.team.map((m) => `
-    <div class="member">
+  $('#team').innerHTML = state.team.map((m) => {
+    const inner = `
       <div class="avatar">${m.photo ? `<img src="${esc(m.photo)}" alt="${esc(m.name)}" loading="lazy">` : AVATAR}</div>
-      <h4>${esc(m.name)}</h4><span>${esc(m.title)}</span>
-    </div>`).join('');
+      <h4>${esc(m.name)}</h4><span>${esc(m.title)}</span>`;
+    return m.bio
+      ? `<button type="button" class="member has-bio" data-profile="${m.id}">${inner}<em>Viac o mne →</em></button>`
+      : `<div class="member">${inner}</div>`;
+  }).join('');
 }
+
+// odseky oddelené prázdnym riadkom, jednotlivé riadky zalomené
+const paragraphs = (text) => text.split(/\n\s*\n/).map((p) => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
+
+// procedúry člena tímu, ktoré sú na webe aktívne
+const memberProcedures = (m) => state.procedures.filter((p) => m.procedures.includes(p.id));
+
+function openProfileCard(m) {
+  const procs = memberProcedures(m);
+  $('#therapist-body').innerHTML = `
+    <div class="tp-photo">${m.photo ? `<img src="${esc(m.photo)}" alt="${esc(m.name)}">` : AVATAR}</div>
+    <div class="tp-text">
+      <span class="eyebrow">${esc(m.title)}</span>
+      <h3 id="therapist-title">${esc(m.name)}</h3>
+      <div class="tp-bio">${paragraphs(m.bio)}</div>
+      ${procs.length ? `<h5>Procedúry</h5><ul class="tp-procs">${procs.map((p) => `<li>${esc(p.name)}</li>`).join('')}</ul>` : ''}
+      ${procs.length ? `<button type="button" class="btn btn-primary" data-book-with="${m.id}">Objednať sa</button>` : ''}
+    </div>`;
+  $('#therapist').showModal();
+}
+
+// rezervácia u vybraného terapeuta: ak aktuálna procedúra nesedí, vyberie sa jeho prvá
+function bookWith(m) {
+  $('#therapist').close();
+  state.member = m;
+  if (state.proc && m.procedures.includes(state.proc.id)) {
+    renderMembers();
+    loadSlots();
+  } else {
+    selectProc(memberProcedures(m)[0].id);
+  }
+  $('#rezervacia').scrollIntoView({ behavior: 'smooth' });
+}
+
+$('#team').addEventListener('click', (e) => {
+  const card = e.target.closest('[data-profile]');
+  if (card) openProfileCard(state.team.find((m) => m.id === Number(card.dataset.profile)));
+});
+$('#therapist').addEventListener('click', (e) => {
+  const book = e.target.closest('[data-book-with]');
+  if (book) bookWith(state.team.find((m) => m.id === Number(book.dataset.bookWith)));
+});
 
 // terapeuti, ktorí robia vybranú procedúru; „Ktokoľvek“ nechá výber na serveri
 function renderMembers() {
