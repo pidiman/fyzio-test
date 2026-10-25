@@ -6,7 +6,7 @@ import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
 import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
-  notifyClientVerify, notifyClientCancelled,
+  notifyClientVerify, notifyClientCancelled, notifyClientPasswordReset,
 } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -374,6 +374,46 @@ app.post('/api/client/login', rateLimit(10, 15 * 60e3), async (req, res) => {
   }
   await startClientSession(req, res, client.id);
   res.json(await clientProfile(client.id));
+});
+
+// ---------- zabudnuté heslo klienta ----------
+
+const RESET_MS = 2 * 3600e3;
+
+// odpoveď je vždy rovnaká, aby sa nedalo zistiť, či účet s daným e-mailom existuje
+app.post('/api/client/forgot', rateLimit(5, 3600e3), async (req, res) => {
+  const email = str(req.body?.email, 120);
+  if (!isEmail(email)) throw bad('Zadajte platný e-mail.');
+  const client = await db.get('SELECT id FROM clients WHERE lower(email) = lower(?)', email);
+  if (client) {
+    const token = crypto.randomBytes(32).toString('base64url');
+    await db.run('DELETE FROM client_password_tokens WHERE client_id = ? OR expires_at < ?', client.id, Date.now());
+    await db.run('INSERT INTO client_password_tokens (token_hash, client_id, expires_at) VALUES (?, ?, ?)',
+      tokenHash(token), client.id, Date.now() + RESET_MS);
+    // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
+    notifyClientPasswordReset(await clientProfile(client.id), `${baseUrl(req)}/#nove-heslo=${token}`);
+  }
+  res.json({ ok: true });
+});
+
+// nové heslo cez odkaz z e-mailu: odhlási ostatné zariadenia a klienta prihlási;
+// odkaz prišiel na jeho e-mail, preto sa nepotvrdený účet zároveň potvrdí
+app.post('/api/client/reset', rateLimit(10, 15 * 60e3), async (req, res) => {
+  const { token, password, password2 } = req.body ?? {};
+  const row = typeof token === 'string' && await db.get(
+    'SELECT client_id FROM client_password_tokens WHERE token_hash = ? AND expires_at > ?', tokenHash(token), Date.now()
+  );
+  if (!row) throw bad('Odkaz je neplatný alebo vypršal. Požiadajte o nový cez „Zabudnuté heslo“.');
+  if (typeof password !== 'string' || password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
+  if (password2 !== password) throw bad('Heslá sa nezhodujú.');
+  await db.tx(async (t) => {
+    await t.run('UPDATE clients SET password_hash = ?, verified_at = COALESCE(verified_at, now()) WHERE id = ?',
+      hashPassword(password), row.client_id);
+    await t.run('DELETE FROM client_password_tokens WHERE client_id = ?', row.client_id);
+    await t.run('DELETE FROM client_sessions WHERE client_id = ?', row.client_id);
+  });
+  await startClientSession(req, res, row.client_id);
+  res.json(await clientProfile(row.client_id));
 });
 
 app.post('/api/client/logout', async (req, res) => {

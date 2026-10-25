@@ -377,16 +377,21 @@ $('#moje-rezervacie').addEventListener('click', (e) => {
   renderMyCalendar();
 });
 
+// tab: login | register | forgot (zabudnuté heslo nemá vlastnú záložku)
 function showTab(tab) {
   document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('sel', b.dataset.tab === tab));
   $('#login-form').hidden = tab !== 'login';
   $('#register-form').hidden = tab !== 'register';
+  $('#forgot-form').hidden = tab !== 'forgot';
+  // e-mail z prihlásenia sa prenesie do formulára zabudnutého hesla
+  if (tab === 'forgot') $('#forgot-form').elements.email.value ||= $('#login-form').elements.email.value;
 }
 
 function openAuth(tab) {
   showTab(tab);
   $('#auth').querySelectorAll('.form-err').forEach((el) => { el.textContent = ''; });
-  $('#auth').showModal();
+  // prepnutie na zabudnuté heslo prebieha v už otvorenom okne
+  if (!$('#auth').open) $('#auth').showModal();
 }
 
 function openProfile() {
@@ -441,12 +446,35 @@ function notice(title, text, ok = true) {
 
 // po registrácii sa klient neprihlási – najprv musí potvrdiť e-mail odkazom
 // zopakované heslo sa musí zhodovať – prehliadač chybu ukáže pri odoslaní (reportValidity)
-const { password, password2 } = registerForm.elements;
-const checkPasswords = () => {
-  password2.setCustomValidity(password2.value && password2.value !== password.value ? 'Heslá sa nezhodujú.' : '');
-};
-password.addEventListener('input', checkPasswords);
-password2.addEventListener('input', checkPasswords);
+function matchPasswords(form) {
+  const { password, password2 } = form.elements;
+  const check = () => {
+    password2.setCustomValidity(password2.value && password2.value !== password.value ? 'Heslá sa nezhodujú.' : '');
+  };
+  password.addEventListener('input', check);
+  password2.addEventListener('input', check);
+}
+matchPasswords(registerForm);
+matchPasswords($('#reset-form'));
+
+onSubmit($('#forgot-form'), async (data) => {
+  await send('/api/client/forgot', 'POST', data);
+  $('#forgot-form').reset();
+  $('#auth').close();
+  notice('Skontrolujte e-mail',
+    `Ak u nás existuje účet s adresou ${data.email}, poslali sme naň odkaz na nastavenie nového hesla. ` +
+    'Odkaz platí 2 hodiny – ak e-mail nevidíte, pozrite aj priečinok so spamom.');
+});
+
+// token z odkazu #nove-heslo=… (nastaví sa pri načítaní stránky)
+let resetToken = null;
+
+onSubmit($('#reset-form'), async (data) => {
+  setClient(await send('/api/client/reset', 'POST', { ...data, token: resetToken }));
+  $('#reset-form').reset();
+  $('#reset').close();
+  notice('Heslo je zmenené', `Vitajte späť, ${state.client.name}! Ste prihlásení s novým heslom.`);
+});
 
 onSubmit(registerForm, async (data) => {
   if (!gdpr.checked) throw new Error('Pre registráciu musíte súhlasiť so spracúvaním osobných údajov.');
@@ -508,6 +536,12 @@ if (verifyToken) {
   );
 } else {
   api('/api/client/me').then(setClient).catch(() => {});
+  // odkaz zo zabudnutého hesla: /#nove-heslo=<token>
+  resetToken = /^#nove-heslo=([\w-]+)$/.exec(location.hash)?.[1] ?? null;
+  if (resetToken) {
+    history.replaceState(null, '', location.pathname + location.search);
+    $('#reset').showModal();
+  }
 }
 
 const burger = $('#burger'), menu = $('#menu');

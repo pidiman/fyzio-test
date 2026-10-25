@@ -169,6 +169,14 @@
     <label class="full">Heslo<input name="password" type="password" required autocomplete="current-password"></label>
     <button class="btn btn-primary full">Prihlásiť sa</button>
     <p class="form-err full" role="alert"></p>
+    <p class="full center"><button type="button" class="link" data-auth="forgot">Zabudnuté heslo?</button></p>
+  </form>
+  <form class="fields" id="forgot-form" novalidate hidden>
+    <p class="full lead">Zadajte e-mail, s ktorým ste sa zaregistrovali. Pošleme vám odkaz na nastavenie nového hesla.</p>
+    <label class="full">E-mail<input name="email" type="email" required autocomplete="email"></label>
+    <button class="btn btn-primary full">Poslať odkaz</button>
+    <p class="form-err full" role="alert"></p>
+    <p class="full center"><button type="button" class="link" data-auth="login">Späť na prihlásenie</button></p>
   </form>
   <form class="fields" id="register-form" novalidate hidden>
     <p class="full lead">Po registrácii už pri rezervácii nemusíte vypĺňať meno, e-mail ani telefón.</p>
@@ -184,6 +192,18 @@
         Oboznámil(a) som sa so <a href="#" data-privacy>zásadami ochrany osobných údajov</a>. *</span>
     </label>
     <button class="btn btn-primary full" disabled>Zaregistrovať sa</button>
+    <p class="form-err full" role="alert"></p>
+  </form>
+</dialog>
+
+<!-- nové heslo cez odkaz z e-mailu (#nove-heslo=…) -->
+<dialog class="modal" id="reset" aria-labelledby="reset-title">
+  <button class="x" type="button" data-close aria-label="Zavrieť">×</button>
+  <h3 id="reset-title">Nové heslo</h3>
+  <form class="fields" id="reset-form" novalidate>
+    <label class="full">Nové heslo * (aspoň 8 znakov)<input name="password" type="password" required minlength="8" autocomplete="new-password" autofocus></label>
+    <label class="full">Zopakujte heslo *<input name="password2" type="password" required autocomplete="new-password"></label>
+    <button class="btn btn-primary full">Uložiť heslo</button>
     <p class="form-err full" role="alert"></p>
   </form>
 </dialog>

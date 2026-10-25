@@ -284,6 +284,25 @@ export function notifyClientVerify(c, link) {
   });
 }
 
+// Zabudnuté heslo klienta: odkaz na nastavenie nového hesla
+export function notifyClientPasswordReset(c, link) {
+  const intro = `dostali sme žiadosť o nastavenie nového hesla k vášmu účtu na webe ${SITE_NAME}. ` +
+    'Nové heslo si nastavíte cez tlačidlo nižšie.';
+  const note = 'Odkaz platí 2 hodiny a dá sa použiť len raz. Ak ste o zmenu hesla nežiadali, e-mail môžete ignorovať – ' +
+    'vaše súčasné heslo ostáva platné.';
+  sendLater(c.email, {
+    subject: `Nové heslo – ${SITE_NAME}`,
+    text: `Dobrý deň, ${c.name},\n\n${intro}\n\nNastaviť nové heslo: ${link}\n\n${note}${signature()}`,
+    html: emailHtml({
+      preheader: 'Odkaz na nastavenie nového hesla platí 2 hodiny.',
+      eyebrow: 'Zabudnuté heslo', title: 'Nové heslo', name: c.name, rows: [['E-mail', c.email]],
+      lines: [esc(intro), esc(note)],
+      button: { label: 'Nastaviť nové heslo', href: link },
+      footnote: 'Tento e-mail bol odoslaný automaticky na základe žiadosti o nové heslo.',
+    }),
+  });
+}
+
 // Klient zrušil termín na webe: dôvod dostanú admini (ADMIN_EMAIL a účty adminov) a priradený terapeut
 export function notifyClientCancelled(b, staffEmails) {
   const seen = new Set();

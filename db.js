@@ -162,6 +162,13 @@ await db.exec(`
     expires_at bigint  NOT NULL
   );
 
+  -- jednorazové odkazy na nastavenie nového hesla klienta (zabudnuté heslo)
+  CREATE TABLE IF NOT EXISTS client_password_tokens (
+    token_hash text    PRIMARY KEY,
+    client_id  integer NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    expires_at bigint  NOT NULL
+  );
+
   -- názov, trvanie a cena procedúry sa kopírujú, aby rezervácia ostala správna aj po úprave cenníka;
   -- client_id = rezervácia prihláseného klienta, cancel_reason = dôvod, keď ju klient zrušil na webe
   CREATE TABLE IF NOT EXISTS bookings (

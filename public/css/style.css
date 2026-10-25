@@ -235,6 +235,8 @@ em.st-cancelled{background:var(--danger)}
 .mb-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .mb-side .link{font-size:.82rem;color:var(--danger);border-bottom-color:currentColor}
 .modal .small{color:var(--muted);font-size:.85rem}
+.modal .center{text-align:center}
+.modal .center .link{font-size:.9rem;color:var(--muted)}
 .badge{font-size:.66rem;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:999px;white-space:nowrap}
 .badge.st-new{background:var(--shell);color:var(--taupe-d)}
 .badge.st-confirmed{background:#e6ede3;color:#4b6647}
