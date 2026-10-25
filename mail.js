@@ -247,17 +247,44 @@ export function notifyTherapist(b, emails, kind) {
   });
 }
 
-export function notifyNewBooking(b) {
-  sendLater(
-    ADMIN_EMAIL,
-    {
-      subject: `Nová rezervácia: ${b.procedure_name}, ${fmtDate(b.date)} ${b.time}`,
-      text: `${summary(b)}\n\nKlient:    ${b.name}\nE-mail:    ${b.email || '—'}\nTelefón:   ${b.phone || '—'}` +
-        (b.note ? `\n\nPoznámka:\n${b.note}` : '') +
-        (contact().url ? `\n\nPotvrdiť v administrácii: ${contact().url}/admin` : ''),
-    },
-    b.email || undefined
-  );
+// Nová rezervácia z webu: upozornenie pre ADMIN_EMAIL a pre terapeuta, ktorému sa pridelila
+// (odpoveď na e-mail ide priamo klientovi); klient dostane potvrdenie prijatia
+export function notifyNewBooking(b, therapistEmails = []) {
+  const { url } = contact();
+  const when = `${fmtDate(b.date)}, ${b.time} – ${b.end_time}`;
+  const rows = [
+    ['Klient', b.name],
+    ['Kontakt', [b.email, b.phone].filter(Boolean).join(' · ') || '—'],
+    ['Procedúra', b.procedure_name],
+    ['Termín', when],
+    ['Terapeut', b.member_name || 'nepriradený'],
+    ...(b.room_name ? [['Miestnosť', b.room_name]] : []),
+    ['Cena', eur(b.price)],
+    ...(b.note ? [['Poznámka', b.note]] : []),
+  ];
+  const message = (name, intro) => ({
+    subject: `Nová rezervácia: ${b.procedure_name}, ${fmtDate(b.date)} ${b.time} – ${b.name}`,
+    text: `Dobrý deň,\n\n${intro}\n\n` +
+      rows.map(([k, v]) => `${(k + ':').padEnd(11)}${v}`).join('\n') +
+      (url ? `\n\nPotvrdiť v administrácii: ${url}/admin` : ''),
+    html: emailHtml({
+      preheader: `${b.procedure_name}, ${when} – ${b.name}`,
+      eyebrow: 'Nová rezervácia', title: b.name, name, rows,
+      lines: [esc(intro)],
+      button: url ? { label: 'Potvrdiť v administrácii', href: `${url}/admin` } : null,
+      footnote: 'Tento e-mail bol odoslaný automaticky po novej rezervácii na webe.',
+    }),
+  });
+  const replyTo = b.email || undefined;
+  const pending = 'Termín čaká na potvrdenie – klient dostane e-mail, keď ho potvrdíte.';
+  sendLater(ADMIN_EMAIL, message(`tím ${SITE_NAME}`, `cez web prišla nová rezervácia. ${pending}`), replyTo);
+
+  // terapeut dostane e-mail len raz, aj keď je zároveň ADMIN_EMAIL
+  const seen = new Set([ADMIN_EMAIL?.toLowerCase()]);
+  const therapists = therapistEmails.filter((e) => !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+  if (therapists.length) {
+    sendLater(therapists.join(', '), message(b.member_name, `máte novú rezerváciu cez web. ${pending}`), replyTo);
+  }
   sendLater(b.email, clientEmails.received(b));
 }
 

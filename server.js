@@ -208,7 +208,11 @@ app.post('/api/bookings', rateLimit(10, 3600e3), async (req, res) => {
     toTime(toMin(b.time) + proc.duration_min), name, phone, email, note,
     proc.room_id, memberId, memberName, clientId);
   });
-  notifyNewBooking(booking);
+  const room = booking.room_id && await db.get('SELECT name FROM rooms WHERE id = ?', booking.room_id);
+  const therapists = booking.member_id
+    ? (await db.all("SELECT email FROM users WHERE member_id = ? AND email != ''", booking.member_id)).map((u) => u.email)
+    : [];
+  notifyNewBooking({ ...booking, room_name: room?.name ?? '' }, therapists);
   res.status(201).json({ id: booking.id, member_name: booking.member_name });
 });
 
