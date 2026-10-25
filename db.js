@@ -96,6 +96,24 @@ db.exec(`
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     expires_at INTEGER NOT NULL
   );
+
+  -- účty klientov z verejného webu (oddelené od účtov administrácie);
+  -- gdpr_consent_at = kedy klient pri registrácii udelil súhlas so spracúvaním osobných údajov
+  CREATE TABLE IF NOT EXISTS clients (
+    id              INTEGER PRIMARY KEY,
+    email           TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash   TEXT    NOT NULL,
+    name            TEXT    NOT NULL,
+    phone           TEXT    NOT NULL DEFAULT '',
+    gdpr_consent_at TEXT    NOT NULL,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS client_sessions (
+    token_hash TEXT    PRIMARY KEY,
+    client_id  INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  );
 `);
 
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
@@ -124,6 +142,10 @@ if (!hasColumn('bookings', 'room_id')) {
     ALTER TABLE bookings ADD COLUMN member_name TEXT NOT NULL DEFAULT '';
     CREATE INDEX IF NOT EXISTS bookings_member ON bookings(member_id, date);
   `);
+}
+// rezervácia prihláseného klienta; po zrušení účtu ostane rezervácia bez väzby na účet
+if (!hasColumn('bookings', 'client_id')) {
+  db.exec('ALTER TABLE bookings ADD COLUMN client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL');
 }
 
 // kľúče hodín: 0 = nedeľa … 6 = sobota, null = zatvorené

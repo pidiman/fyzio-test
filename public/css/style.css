@@ -158,6 +158,42 @@ section{padding:104px 0}
 .done h3{font-size:1.6rem;margin-bottom:8px}
 .done p{color:var(--muted);margin-bottom:22px}
 
+/* Klientsky účet */
+.nav-actions{display:flex;align-items:center;gap:22px}
+.account{background:none;border:0;border-bottom:1px solid var(--taupe);padding:2px 0;font:inherit;font-size:.78rem;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--ink);cursor:pointer}
+.account:hover{color:var(--taupe-d)}
+.account-hint{color:var(--muted);font-size:.95rem;margin:-6px 0 16px}
+.account-hint b{color:var(--ink);font-weight:500}
+.link{background:none;border:0;padding:0;font:inherit;color:var(--ink);border-bottom:1px solid var(--taupe);cursor:pointer}
+.link:hover{color:var(--taupe-d)}
+.modal{position:relative;width:min(480px,100% - 32px);max-height:calc(100dvh - 32px);margin:auto;background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:40px 32px 32px;box-shadow:var(--shadow);color:var(--text)}
+.modal::backdrop{background:rgba(46,42,38,.55);backdrop-filter:blur(3px)}
+.modal h3{font-size:1.5rem;margin-bottom:20px}
+.modal .x{position:absolute;top:10px;right:12px;width:40px;height:40px;background:none;border:0;font-size:1.6rem;line-height:1;color:var(--muted);cursor:pointer}
+.modal .x:hover{color:var(--ink)}
+.modal .fields{grid-template-columns:1fr}
+.modal .lead{color:var(--muted);font-size:.95rem}
+.modal .wide{width:100%;margin-top:12px}
+.tabs{display:flex;gap:24px;border-bottom:1px solid var(--linen);margin-bottom:24px}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:0 0 10px;font:inherit;font-size:.8rem;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+.tabs button.sel{color:var(--ink);border-bottom-color:var(--ink)}
+.fields .consent{display:flex;gap:12px;align-items:flex-start;font-size:.88rem;font-weight:400;letter-spacing:0;text-transform:none;color:var(--text);line-height:1.5}
+.fields .consent input{width:18px;height:18px;padding:0;flex:none;margin-top:2px;accent-color:var(--ink)}
+.consent a{color:var(--ink);border-bottom:1px solid var(--taupe)}
+.form-err{color:var(--danger);font-size:.9rem;min-height:1.2em}
+.form-err:empty{display:none}
+.btn-danger{background:var(--danger);color:var(--white)}
+.btn-danger:hover{background:#86392e}
+.delete-account{margin-top:20px;padding-top:16px;border-top:1px solid var(--linen)}
+.delete-account summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+.delete-account .fields{margin-top:14px}
+.delete-account p{color:var(--muted);font-size:.9rem}
+.privacy{width:min(680px,100% - 32px)}
+.privacy p{font-size:.93rem;margin-bottom:12px}
+.privacy p b{color:var(--ink);font-weight:500}
+.privacy a{border-bottom:1px solid var(--taupe)}
+.privacy .btn{margin-top:8px}
+
 /* CTA */
 .cta-sec{padding:0}
 .cta{position:relative;background:var(--taupe);text-align:center;padding:80px 24px;overflow:hidden}
@@ -196,6 +232,8 @@ footer .logo small{color:var(--taupe)}
 @media (max-width:760px){
   .menu,.nav .btn-primary{display:none}
   .burger{display:block}
+  .nav-actions{margin-left:auto;margin-right:8px}
+  .modal{padding:36px 20px 24px}
   .menu.open{display:flex;flex-direction:column;position:absolute;top:76px;left:0;right:0;background:var(--cream);padding:24px 16px;gap:18px;border-bottom:1px solid var(--linen);box-shadow:var(--shadow)}
   .burger.open span:nth-child(1){transform:translateY(7.5px) rotate(45deg)}
   .burger.open span:nth-child(2){opacity:0}

@@ -24,7 +24,7 @@ async function api(url, opts) {
 
 const PHONE_PREFIX = '+4219';
 
-const state = { procedures: [], team: [], info: null, proc: null, member: null, date: null, time: null };
+const state = { procedures: [], team: [], info: null, proc: null, member: null, date: null, time: null, client: null };
 
 function renderServices() {
   $('#services').innerHTML = state.procedures.map((p) => `
@@ -213,6 +213,7 @@ $('#submit').addEventListener('click', async () => {
       'Čoskoro sa vám ozveme s potvrdením termínu.';
     $('#done').showModal();
     form.reset();
+    fillContact();
   } catch (err) {
     $('#err').textContent = err.message;
     if (err.status === 409) loadSlots();
@@ -229,6 +230,138 @@ $('#done').addEventListener('close', () => {
   state.time = null;
   loadSlots();
 });
+
+// ---------- klientsky účet ----------
+
+const send = (url, method, body) =>
+  api(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+function renderAccount() {
+  const c = state.client;
+  $('#account').textContent = c ? 'Môj účet' : 'Prihlásiť sa';
+  $('#account-hint').innerHTML = c
+    ? `Ste prihlásení ako <b>${esc(c.name)}</b> – údaje sme vyplnili z vášho účtu.`
+    : 'Máte účet? <button type="button" class="link" data-auth="login">Prihláste sa</button> alebo sa ' +
+      '<button type="button" class="link" data-auth="register">zaregistrujte</button> a údaje sa vyplnia samé.';
+}
+
+// údaje z účtu do formulára rezervácie
+function fillContact() {
+  const c = state.client;
+  if (!c) return;
+  const f = $('#contact').elements;
+  f.name.value = c.name;
+  f.email.value = c.email;
+  f.phone.value = c.phone || PHONE_PREFIX;
+}
+
+function setClient(client) {
+  state.client = client;
+  renderAccount();
+  fillContact();
+}
+
+function showTab(tab) {
+  document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('sel', b.dataset.tab === tab));
+  $('#login-form').hidden = tab !== 'login';
+  $('#register-form').hidden = tab !== 'register';
+}
+
+function openAuth(tab) {
+  showTab(tab);
+  $('#auth').querySelectorAll('.form-err').forEach((el) => { el.textContent = ''; });
+  $('#auth').showModal();
+}
+
+function openProfile() {
+  const f = $('#profile-form');
+  f.elements.name.value = state.client.name;
+  f.elements.email.value = state.client.email;
+  f.elements.phone.value = state.client.phone;
+  $('#profile').querySelectorAll('.form-err').forEach((el) => { el.textContent = ''; });
+  $('#delete-form').reset();
+  $('.delete-account').open = false;
+  $('#profile').showModal();
+}
+
+// spoločné odoslanie formulárov účtu: kontrola polí, zablokovanie tlačidla, chyba pod formulárom
+function onSubmit(form, handler) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = form.querySelector('.form-err');
+    err.textContent = '';
+    if (!form.reportValidity()) return;
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    try {
+      await handler(Object.fromEntries(new FormData(form)));
+    } catch (ex) {
+      err.textContent = ex.message;
+    } finally {
+      btn.disabled = false;
+      // formulár mohol byť medzitým vyprázdnený – nech si stav tlačidla prepočíta (súhlas pri registrácii)
+      form.dispatchEvent(new Event('change'));
+    }
+  });
+}
+
+onSubmit($('#login-form'), async (data) => {
+  setClient(await send('/api/client/login', 'POST', data));
+  $('#login-form').reset();
+  $('#auth').close();
+});
+
+// bez potvrdenia súhlasu GDPR sa registrácia nedá odoslať (overuje aj server)
+const registerForm = $('#register-form');
+const gdpr = registerForm.elements.gdpr;
+registerForm.addEventListener('change', () => { registerForm.querySelector('button').disabled = !gdpr.checked; });
+
+onSubmit(registerForm, async (data) => {
+  if (!gdpr.checked) throw new Error('Pre registráciu musíte súhlasiť so spracúvaním osobných údajov.');
+  setClient(await send('/api/client/register', 'POST', { ...data, gdpr: true }));
+  registerForm.reset();
+  $('#auth').close();
+});
+
+onSubmit($('#profile-form'), async (data) => {
+  setClient(await send('/api/client/me', 'PUT', data));
+  $('#profile').close();
+});
+
+onSubmit($('#delete-form'), async (data) => {
+  if (!confirm('Naozaj chcete natrvalo zrušiť účet?')) return;
+  await send('/api/client/me', 'DELETE', data);
+  state.client = null;
+  renderAccount();
+  $('#contact').reset();
+  $('#profile').close();
+});
+
+$('#logout').addEventListener('click', async () => {
+  await send('/api/client/logout', 'POST', {}).catch(() => {});
+  state.client = null;
+  renderAccount();
+  $('#contact').reset();
+  $('#profile').close();
+});
+
+$('#account').addEventListener('click', () => (state.client ? openProfile() : openAuth('login')));
+
+document.addEventListener('click', (e) => {
+  const auth = e.target.closest('[data-auth]');
+  if (auth) return openAuth(auth.dataset.auth);
+  const tab = e.target.closest('[data-tab]');
+  if (tab) return showTab(tab.dataset.tab);
+  if (e.target.closest('[data-privacy]')) {
+    e.preventDefault();
+    return $('#privacy').showModal();
+  }
+  const close = e.target.closest('[data-close]');
+  if (close) close.closest('dialog').close();
+});
+
+renderAccount();
+api('/api/client/me').then(setClient).catch(() => {});
 
 const burger = $('#burger'), menu = $('#menu');
 burger.addEventListener('click', () => { burger.classList.toggle('open'); menu.classList.toggle('open'); });

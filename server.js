@@ -186,12 +186,12 @@ app.post('/api/bookings', rateLimit(10, 3600e3), (req, res) => {
 
   const result = db.prepare(`
     INSERT INTO bookings (procedure_id, procedure_name, duration_min, price, date, time, end_time, name, phone, email, note,
-                          room_id, member_id, member_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          room_id, member_id, member_name, client_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     proc.id, proc.name, proc.duration_min, proc.price, b.date, b.time,
     toTime(toMin(b.time) + proc.duration_min), name, phone, email, note,
-    proc.room_id, memberId, memberName
+    proc.room_id, memberId, memberName, currentClient(req)?.id ?? null
   );
   const id = Number(result.lastInsertRowid);
   notifyNewBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(id));
@@ -256,6 +256,95 @@ app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), (req, res) => {
   const admins = db.prepare("SELECT email FROM users WHERE role = 'admin' AND email != '' AND id != ?").all(user.id).map((a) => a.email);
   notifyPasswordSet(user, row.kind === 'invite', admins);
   res.json({ username: user.username });
+});
+
+// ---------- klientske účty (verejný web) ----------
+
+const CLIENT_SESSION_MS = 30 * 24 * 3600e3;
+const clientToken = (req) => /(?:^|;\s*)csid=([\w-]+)/.exec(req.headers.cookie || '')?.[1];
+const clientProfile = (id) => db.prepare('SELECT id, name, email, phone FROM clients WHERE id = ?').get(id);
+
+function currentClient(req) {
+  const token = clientToken(req);
+  return token && db.prepare(`
+    SELECT c.id, c.name, c.email, c.phone FROM client_sessions s JOIN clients c ON c.id = s.client_id
+    WHERE s.token_hash = ? AND s.expires_at > ?
+  `).get(tokenHash(token), Date.now());
+}
+
+function requireClient(req) {
+  const client = currentClient(req);
+  if (!client) throw new HttpError(401, 'Prihláste sa, prosím.');
+  return client;
+}
+
+function startClientSession(req, res, clientId) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM client_sessions WHERE expires_at < ?').run(Date.now());
+  db.prepare('INSERT INTO client_sessions (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
+    .run(tokenHash(token), clientId, Date.now() + CLIENT_SESSION_MS);
+  res.cookie('csid', token, { httpOnly: true, sameSite: 'strict', secure: req.secure, maxAge: CLIENT_SESSION_MS, path: '/' });
+}
+
+function clientInput(body = {}) {
+  const c = { name: str(body.name, 100), email: str(body.email, 120), phone: str(body.phone, 30) };
+  if (c.name.length < 3) throw bad('Zadajte meno a priezvisko.');
+  if (!isEmail(c.email)) throw bad('Zadajte platný e-mail.');
+  if (c.phone && !/^\+?[\d\s/-]{6,}$/.test(c.phone)) throw bad('Zadajte platné telefónne číslo.');
+  return c;
+}
+
+const clientEmailTaken = (email, exceptId = 0) =>
+  !!db.prepare('SELECT 1 FROM clients WHERE email = ? AND id != ?').get(email, exceptId);
+
+// registrácia je možná len so súhlasom so spracúvaním osobných údajov (GDPR, zákon č. 18/2018 Z. z.)
+app.post('/api/client/register', rateLimit(5, 3600e3), (req, res) => {
+  const body = req.body ?? {};
+  if (body.gdpr !== true) throw bad('Bez súhlasu so spracúvaním osobných údajov sa nie je možné zaregistrovať.');
+  const c = clientInput(body);
+  if (typeof body.password !== 'string' || body.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
+  if (clientEmailTaken(c.email)) throw new HttpError(409, 'Účet s týmto e-mailom už existuje – prihláste sa.');
+  const id = Number(db.prepare(`
+    INSERT INTO clients (email, password_hash, name, phone, gdpr_consent_at) VALUES (?, ?, ?, ?, datetime('now'))
+  `).run(c.email, hashPassword(body.password), c.name, c.phone).lastInsertRowid);
+  startClientSession(req, res, id);
+  res.status(201).json(clientProfile(id));
+});
+
+app.post('/api/client/login', rateLimit(10, 15 * 60e3), (req, res) => {
+  const client = db.prepare('SELECT id, password_hash FROM clients WHERE email = ?').get(str(req.body?.email, 120));
+  const ok = verifyPassword(String(req.body?.password ?? ''), client?.password_hash ?? DUMMY_HASH);
+  if (!client || !ok) throw new HttpError(401, 'Nesprávny e-mail alebo heslo.');
+  startClientSession(req, res, client.id);
+  res.json(clientProfile(client.id));
+});
+
+app.post('/api/client/logout', (req, res) => {
+  const token = clientToken(req);
+  if (token) db.prepare('DELETE FROM client_sessions WHERE token_hash = ?').run(tokenHash(token));
+  res.clearCookie('csid', { path: '/' });
+  res.json({ ok: true });
+});
+
+// neprihlásený návštevník dostane null, nie chybu
+app.get('/api/client/me', (req, res) => res.json(currentClient(req) || null));
+
+app.put('/api/client/me', (req, res) => {
+  const { id } = requireClient(req);
+  const c = clientInput(req.body);
+  if (clientEmailTaken(c.email, id)) throw new HttpError(409, 'Tento e-mail už používa iný účet.');
+  db.prepare('UPDATE clients SET name = ?, email = ?, phone = ? WHERE id = ?').run(c.name, c.email, c.phone, id);
+  res.json(clientProfile(id));
+});
+
+// zrušenie účtu = odvolanie súhlasu; údaje účtu sa vymažú, rezervácie ostanú bez väzby na účet
+app.delete('/api/client/me', rateLimit(10, 15 * 60e3), (req, res) => {
+  const { id } = requireClient(req);
+  const { password_hash } = db.prepare('SELECT password_hash FROM clients WHERE id = ?').get(id);
+  if (!verifyPassword(String(req.body?.password ?? ''), password_hash)) throw bad('Heslo nie je správne.');
+  db.prepare('DELETE FROM clients WHERE id = ?').run(id);
+  res.clearCookie('csid', { path: '/' });
+  res.json({ ok: true });
 });
 
 app.use('/api/admin', (req, res, next) => {

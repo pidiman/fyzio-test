@@ -22,7 +22,10 @@
       <li id="menu-tim" hidden><a href="#tim">Tím</a></li>
       <li><a href="#kontakt">Kontakt</a></li>
     </ul>
-    <a href="#rezervacia" class="btn btn-primary">Objednať sa</a>
+    <div class="nav-actions">
+      <button class="account" id="account" type="button">Prihlásiť sa</button>
+      <a href="#rezervacia" class="btn btn-primary">Objednať sa</a>
+    </div>
     <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
   </div>
 </header>
@@ -127,6 +130,7 @@
         </div>
         <div class="step">
           <div class="step-h"><span>05</span><h3>Vaše údaje</h3></div>
+          <p class="account-hint" id="account-hint"></p>
           <form class="fields" id="contact" novalidate>
             <label>Meno a priezvisko *<input name="name" required minlength="3" autocomplete="name"></label>
             <label>E-mail *<input name="email" type="email" required autocomplete="email"></label>
@@ -153,6 +157,78 @@
   </div>
 </section>
 
+<dialog class="modal" id="auth" aria-label="Klientsky účet">
+  <button class="x" type="button" data-close aria-label="Zavrieť">×</button>
+  <div class="tabs">
+    <button type="button" data-tab="login">Prihlásenie</button>
+    <button type="button" data-tab="register">Registrácia</button>
+  </div>
+  <form class="fields" id="login-form" novalidate>
+    <label class="full">E-mail<input name="email" type="email" required autocomplete="email"></label>
+    <label class="full">Heslo<input name="password" type="password" required autocomplete="current-password"></label>
+    <button class="btn btn-primary full">Prihlásiť sa</button>
+    <p class="form-err full" role="alert"></p>
+  </form>
+  <form class="fields" id="register-form" novalidate hidden>
+    <p class="full lead">Po registrácii už pri rezervácii nemusíte vypĺňať meno, e-mail ani telefón.</p>
+    <label class="full">Meno a priezvisko *<input name="name" required minlength="3" maxlength="100" autocomplete="name"></label>
+    <label class="full">E-mail *<input name="email" type="email" required maxlength="120" autocomplete="email"></label>
+    <label class="full">Telefón<input name="phone" type="tel" pattern="\+?[\d\s\/\-]{6,}" placeholder="+421 9xx xxx xxx" autocomplete="tel"></label>
+    <label class="full">Heslo * (aspoň 8 znakov)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+    <label class="full consent">
+      <input name="gdpr" type="checkbox" required>
+      <span>Súhlasím so spracúvaním mojich osobných údajov (meno, e-mail, telefón) na účel vedenia klientskeho účtu
+        a rezervácie termínov podľa nariadenia (EÚ) 2016/679 (GDPR) a zákona č. 18/2018 Z. z. o ochrane osobných údajov.
+        Oboznámil(a) som sa so <a href="#" data-privacy>zásadami ochrany osobných údajov</a>. *</span>
+    </label>
+    <button class="btn btn-primary full" disabled>Zaregistrovať sa</button>
+    <p class="form-err full" role="alert"></p>
+  </form>
+</dialog>
+
+<dialog class="modal" id="profile" aria-labelledby="profile-title">
+  <button class="x" type="button" data-close aria-label="Zavrieť">×</button>
+  <h3 id="profile-title">Môj účet</h3>
+  <form class="fields" id="profile-form" novalidate>
+    <label class="full">Meno a priezvisko *<input name="name" required minlength="3" maxlength="100" autocomplete="name"></label>
+    <label class="full">E-mail *<input name="email" type="email" required maxlength="120" autocomplete="email"></label>
+    <label class="full">Telefón<input name="phone" type="tel" pattern="\+?[\d\s\/\-]{6,}" placeholder="+421 9xx xxx xxx" autocomplete="tel"></label>
+    <button class="btn btn-primary full">Uložiť zmeny</button>
+    <p class="form-err full" role="alert"></p>
+  </form>
+  <button class="btn btn-ghost wide" id="logout" type="button">Odhlásiť sa</button>
+  <details class="delete-account">
+    <summary>Zrušiť účet a vymazať údaje</summary>
+    <form class="fields" id="delete-form" novalidate>
+      <p class="full">Zrušením účtu odvoláte súhlas so spracúvaním údajov a údaje účtu natrvalo vymažeme.
+        Už vytvorené rezervácie ostanú evidované kvôli ich vybaveniu.</p>
+      <label class="full">Heslo na potvrdenie<input name="password" type="password" required autocomplete="current-password"></label>
+      <button class="btn btn-danger full">Natrvalo zrušiť účet</button>
+      <p class="form-err full" role="alert"></p>
+    </form>
+  </details>
+</dialog>
+
+<!-- TODO: doplniť presné údaje prevádzkovateľa (obchodné meno, sídlo, IČO, kontaktný e-mail) -->
+<dialog class="modal privacy" id="privacy" aria-labelledby="privacy-title">
+  <button class="x" type="button" data-close aria-label="Zavrieť">×</button>
+  <h3 id="privacy-title">Zásady ochrany osobných údajov</h3>
+  <p><b>Prevádzkovateľ:</b> FYZIO Stupava, [obchodné meno, sídlo, IČO], kontakt: údaje v pätičke stránky.</p>
+  <p><b>Aké údaje spracúvame:</b> meno a priezvisko, e-mailovú adresu, telefónne číslo (nepovinné) a prihlasovacie heslo,
+    ktoré ukladáme len v zašifrovanej (hashovanej) podobe. Pri rezervácii aj zvolený termín, procedúru a vašu poznámku.</p>
+  <p><b>Účel a právny základ:</b> vedenie klientskeho účtu a zjednodušenie rezervácií na základe vášho súhlasu
+    (čl. 6 ods. 1 písm. a) GDPR). Vybavenie samotnej rezervácie je plnením zmluvy (čl. 6 ods. 1 písm. b) GDPR).</p>
+  <p><b>Doba uchovávania:</b> údaje účtu uchovávame, kým účet nezrušíte alebo neodvoláte súhlas. Údaje o rezerváciách
+    uchovávame len po dobu nevyhnutnú na ich vybavenie a splnenie zákonných povinností.</p>
+  <p><b>Príjemcovia:</b> údaje neposkytujeme tretím stranám na marketingové účely. Spracúvajú ich len poverení zamestnanci
+    a poskytovatelia technických služieb (hosting, e-mail), ktorí sú viazaní mlčanlivosťou.</p>
+  <p><b>Vaše práva:</b> máte právo na prístup k údajom, ich opravu, vymazanie, obmedzenie spracúvania, prenosnosť,
+    právo namietať a kedykoľvek odvolať súhlas – najjednoduchšie zrušením účtu v časti „Môj účet“. Odvolanie súhlasu
+    nemá vplyv na zákonnosť spracúvania pred jeho odvolaním. Máte tiež právo podať návrh na začatie konania na
+    Úrad na ochranu osobných údajov SR, Hraničná 12, 820 07 Bratislava 27, <a href="https://dataprotection.gov.sk" target="_blank" rel="noopener">dataprotection.gov.sk</a>.</p>
+  <button class="btn btn-primary" type="button" data-close>Rozumiem</button>
+</dialog>
+
 <section id="zavolat" class="cta-sec" hidden>
   <div class="container">
     <div class="cta">
@@ -173,7 +249,7 @@
           <a class="btn btn-map" id="navigate" target="_blank" rel="noopener">Navigovať</a>
         </div>
       </div>
-      <div><h5>Stránka</h5><ul><li><a href="#preco">Prístup</a></li><li><a href="#sluzby">Cenník</a></li><li><a href="#priestor">Priestor</a></li></ul></div>
+      <div><h5>Stránka</h5><ul><li><a href="#preco">Prístup</a></li><li><a href="#sluzby">Cenník</a></li><li><a href="#priestor">Priestor</a></li><li><a href="#" data-privacy>Ochrana osobných údajov</a></li></ul></div>
       <div><h5>Kontakt</h5><ul><li data-phone-item hidden><a href="#" data-phone-link><span data-phone></span></a></li><li><a href="https://www.instagram.com/fyzio.stupava/" target="_blank" rel="noopener">@fyzio.stupava</a></li></ul></div>
       <div><h5>Otváracie hodiny</h5><ul class="hours" id="hours"></ul></div>
     </div>
