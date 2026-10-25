@@ -8,8 +8,11 @@ services:
         required: false
     environment:
       PORT: 3000
-      # vlastná databáza fyzio-db (heslo z POSTGRES_PASSWORD v .env)
-      PGHOST: db
+      # vlastná databáza fyzio-db (heslo z POSTGRES_PASSWORD v .env); meno kontajnera namiesto „db“,
+      # lebo web je aj v zdieľanej sieti db-shared, kde „db“ môže patriť inej databáze
+      PGHOST: fyzio-db
+      # prípadné DATABASE_URL z .env by malo prednosť pred PG* premennými
+      DATABASE_URL: ""
       PGUSER: fyzio
       PGDATABASE: fyzio
       PGPASSWORD: ${POSTGRES_PASSWORD:?Nastavte POSTGRES_PASSWORD v .env}
