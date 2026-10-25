@@ -139,7 +139,7 @@
         <h2>Používatelia</h2>
         <button class="btn btn-primary btn-sm" id="user-new">+ Nový používateľ</button>
       </div>
-      <p class="muted"><b>Admin</b> vidí a spravuje všetko. <b>Solver</b> je člen tímu – vidí len svoje rezervácie a môže ich potvrdiť, dokončiť alebo zrušiť.</p>
+      <p class="muted"><b>Admin</b> vidí a spravuje všetko. <b>Terapeut</b> je člen tímu – vidí len svoje rezervácie a môže ich potvrdiť, dokončiť alebo zrušiť.</p>
       <form class="panel form-grid" id="user-form" hidden autocomplete="off">
         <h3 class="full" id="user-form-title">Nový používateľ</h3>
         <input type="hidden" name="id">
@@ -147,7 +147,7 @@
         <label>Heslo <span id="pw-hint">*</span><input name="password" type="password" minlength="8" autocomplete="new-password"></label>
         <label>Rola
           <select name="role">
-            <option value="solver">Solver (člen tímu)</option>
+            <option value="solver">Terapeut (člen tímu)</option>
             <option value="admin">Admin</option>
           </select>
         </label>
@@ -177,6 +177,12 @@
             </select>
           </label>
           <label>Rezervovať najviac dní dopredu<input name="max_days_ahead" type="number" min="1" max="365"></label>
+        </div>
+        <div class="panel form-grid">
+          <h3 class="full">Kontakt</h3>
+          <p class="muted full">Zobrazuje sa na webe a v e-mailoch pre klientov (tlačidlo Zavolať, odkaz na web).</p>
+          <label>Telefón<input name="contact_phone" type="tel" maxlength="30" placeholder="+421 9xx xxx xxx"></label>
+          <label>Adresa webu<input name="site_url" type="url" maxlength="200" placeholder="https://fyzio.pidiman.sk"></label>
         </div>
         <div class="panel">
           <h3>Zatvorené dni</h3>

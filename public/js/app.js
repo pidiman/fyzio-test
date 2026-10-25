@@ -22,6 +22,8 @@ async function api(url, opts) {
   return data;
 }
 
+const PHONE_PREFIX = '+4219';
+
 const state = { procedures: [], team: [], info: null, proc: null, member: null, date: null, time: null };
 
 function renderServices() {
@@ -61,6 +63,15 @@ function renderMembers() {
       <span class="ph ${m.id ? '' : 'any'}">${m.photo ? `<img src="${esc(m.photo)}" alt="">` : m.id ? AVATAR : '✦'}</span>
       <span><b>${esc(m.name)}</b><small>${esc(m.title)}</small></span>
     </button>`).join('');
+}
+
+// kontaktný telefón sa nastavuje v administrácii; bez neho sa sekcia „Radšej telefonicky?“ skryje
+function renderContact() {
+  const phone = state.info.contact_phone;
+  $('#zavolat').hidden = !phone;
+  document.querySelectorAll('[data-phone-item]').forEach((el) => { el.hidden = !phone; });
+  document.querySelectorAll('[data-phone]').forEach((el) => { el.textContent = phone; });
+  document.querySelectorAll('[data-phone-link]').forEach((el) => { el.href = `tel:${phone.replace(/\s/g, '')}`; });
 }
 
 function renderProcList() {
@@ -168,7 +179,12 @@ document.addEventListener('click', (e) => {
 $('#submit').addEventListener('click', async () => {
   const form = $('#contact');
   $('#err').textContent = '';
-  if (!form.reportValidity()) return;
+  // predvyplnená predvoľba bez ďalších číslic znamená, že telefón nie je zadaný
+  const phone = form.elements.phone;
+  if (phone.value.trim() === PHONE_PREFIX) phone.value = '';
+  const valid = form.reportValidity();
+  if (!phone.value) phone.value = PHONE_PREFIX;
+  if (!valid) return;
 
   const btn = $('#submit');
   btn.disabled = true;
@@ -180,6 +196,7 @@ $('#submit').addEventListener('click', async () => {
       body: JSON.stringify({
         procedure_id: state.proc.id, member_id: state.member?.id, date: state.date, time: state.time,
         ...Object.fromEntries(new FormData(form)),
+        phone: phone.value.trim() === PHONE_PREFIX ? '' : phone.value,
       }),
     });
     $('#done-text').textContent =
@@ -215,6 +232,7 @@ try {
   [state.procedures, state.info, state.team] = await Promise.all([api('/api/procedures'), api('/api/info'), api('/api/team')]);
   renderServices();
   renderTeam();
+  renderContact();
   renderProcList();
   renderDays();
   renderHours();

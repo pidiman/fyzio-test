@@ -9,6 +9,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const TIMEZONE = process.env.TIMEZONE || 'Europe/Bratislava';
 const SESSION_MS = 12 * 3600e3;
 const STATUSES = ['new', 'confirmed', 'done', 'cancelled'];
+// rola „solver“ sa v rozhraní volá Terapeut
 const ROLES = ['admin', 'solver'];
 
 class HttpError extends Error {
@@ -156,8 +157,8 @@ app.use('/media', express.static(mediaDir, { maxAge: '365d', immutable: true }))
 // ---------- verejné API ----------
 
 app.get('/api/info', (req, res) => {
-  const { hours, blocked_dates, max_days_ahead } = getSettings();
-  res.json({ hours, blocked_dates, max_days_ahead, today: localNow().date });
+  const { hours, blocked_dates, max_days_ahead, contact_phone } = getSettings();
+  res.json({ hours, blocked_dates, max_days_ahead, contact_phone, today: localNow().date });
 });
 
 app.get('/api/procedures', (req, res) => {
@@ -194,8 +195,8 @@ app.post('/api/bookings', rateLimit(10, 3600e3), (req, res) => {
   const email = str(b.email, 120);
   const note = str(b.note, 1000);
   if (name.length < 3) throw bad('Zadajte meno a priezvisko.');
-  if (!/^\+?[\d\s/-]{6,}$/.test(phone)) throw bad('Zadajte platné telefónne číslo.');
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('Zadajte platný e-mail.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('Zadajte platný e-mail.');
+  if (phone && !/^\+?[\d\s/-]{6,}$/.test(phone)) throw bad('Zadajte platné telefónne číslo.');
 
   // node:sqlite je synchrónne, takže kontrola a zápis prebehnú bez súbehu s inou rezerváciou
   const free = availability(b.date, proc, Number(b.member_id) || null).get(b.time);
@@ -281,9 +282,9 @@ app.put('/api/admin/me/password', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- rezervácie (solver vidí len svoje) ----------
+// ---------- rezervácie (terapeut vidí len svoje) ----------
 
-// podmienka, ktorá obmedzí rezervácie na prihláseného solvera
+// podmienka, ktorá obmedzí rezervácie na prihláseného terapeuta
 const ownScope = (req) => (isAdmin(req) ? ['1 = 1', []] : ['b.member_id = ?', [req.user.member_id ?? -1]]);
 
 app.get('/api/admin/stats', (req, res) => {
@@ -530,7 +531,7 @@ app.delete('/api/admin/team/:id', (req, res) => {
   const member = db.prepare('SELECT * FROM team_members WHERE id = ?').get(Number(req.params.id));
   if (!member) return res.json({ ok: true });
   if (db.prepare("SELECT 1 FROM users WHERE member_id = ? AND role = 'solver'").get(member.id)) {
-    throw new HttpError(409, 'Člen tímu má prihlasovací účet solvera – najprv ho vymažte v Používateľoch.');
+    throw new HttpError(409, 'Člen tímu má prihlasovací účet terapeuta – najprv ho vymažte v Používateľoch.');
   }
   db.prepare('DELETE FROM team_members WHERE id = ?').run(member.id);
   removePhoto(member.photo);
@@ -556,7 +557,7 @@ function userInput(body = {}, isNew) {
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(u.username)) throw bad('Prihlasovacie meno: 3 – 32 znakov (písmená bez diakritiky, čísla, . _ -).');
   if (!ROLES.includes(u.role)) throw bad('Neplatná rola.');
   if (u.member_id && !db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(u.member_id)) throw bad('Neznámy člen tímu.');
-  if (u.role === 'solver' && !u.member_id) throw bad('Solver musí byť priradený k členovi tímu.');
+  if (u.role === 'solver' && !u.member_id) throw bad('Terapeut musí byť priradený k členovi tímu.');
   if ((isNew || u.password) && u.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
   return u;
 }
@@ -625,8 +626,12 @@ app.put('/api/admin/settings', (req, res) => {
   const max_days_ahead = Math.round(Number(body.max_days_ahead));
   if (!(max_days_ahead >= 1 && max_days_ahead <= 365)) throw bad('Rezervácie dopredu: 1 – 365 dní.');
   const blocked_dates = Array.isArray(body.blocked_dates) ? [...new Set(body.blocked_dates.filter(isDate))].sort() : [];
+  const contact_phone = str(body.contact_phone, 30);
+  if (contact_phone && !/^\+?[\d\s/-]{6,}$/.test(contact_phone)) throw bad('Zadajte platné kontaktné telefónne číslo.');
+  const site_url = str(body.site_url, 200).replace(/\/+$/, '');
+  if (site_url && !/^https?:\/\/[^\s/]+\.[^\s]+$/.test(site_url)) throw bad('Adresa webu musí začínať https:// (napr. https://fyzio.pidiman.sk).');
 
-  saveSettings({ hours, slot_step, max_days_ahead, blocked_dates });
+  saveSettings({ hours, slot_step, max_days_ahead, blocked_dates, contact_phone, site_url });
   res.json({ ok: true });
 });
 

@@ -1,8 +1,9 @@
 import nodemailer from 'nodemailer';
+import { getSettings } from './db.js';
 
 const {
   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE,
-  MAIL_FROM, ADMIN_EMAIL, SITE_NAME = 'FYZIO Stupava', SITE_URL = '', CONTACT_PHONE = '',
+  MAIL_FROM, ADMIN_EMAIL, SITE_NAME = 'FYZIO Stupava',
 } = process.env;
 
 const port = Number(SMTP_PORT) || 587;
@@ -37,8 +38,15 @@ const fmtDate = (d) => {
 };
 const eur = (n) => n.toLocaleString('sk-SK', { style: 'currency', currency: 'EUR' });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const siteUrl = SITE_URL.replace(/\/$/, '');
-const signature = `\n\n${SITE_NAME}${CONTACT_PHONE ? `\nTel.: ${CONTACT_PHONE}` : ''}${SITE_URL ? `\n${SITE_URL}` : ''}`;
+// telefón a adresa webu sa nastavujú v administrácii, preto sa čítajú pri každom e-maile
+const contact = () => {
+  const { contact_phone, site_url } = getSettings();
+  return { phone: contact_phone, url: site_url.replace(/\/$/, '') };
+};
+const signature = () => {
+  const { phone, url } = contact();
+  return `\n\n${SITE_NAME}${phone ? `\nTel.: ${phone}` : ''}${url ? `\n${url}` : ''}`;
+};
 
 const details = (b) => [
   ['Procedúra', b.procedure_name],
@@ -63,9 +71,10 @@ function emailHtml({ preheader, eyebrow, title, name, lines, booking, button }) 
       <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:500 11px/1.4 ${SANS};letter-spacing:2px;text-transform:uppercase;color:${C.taupeD};width:110px;vertical-align:top">${k}</td>
       <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:400 16px/1.4 ${SANS};color:${C.ink}">${esc(v)}</td>
     </tr>`).join('');
-  const contact = [
-    CONTACT_PHONE && `<a href="tel:${esc(CONTACT_PHONE.replace(/\s/g, ''))}" style="color:${C.cream};text-decoration:none">${esc(CONTACT_PHONE)}</a>`,
-    siteUrl && `<a href="${esc(siteUrl)}" style="color:${C.cream};text-decoration:none">${esc(siteUrl.replace(/^https?:\/\//, ''))}</a>`,
+  const { phone, url } = contact();
+  const links = [
+    phone && `<a href="tel:${esc(phone.replace(/\s/g, ''))}" style="color:${C.cream};text-decoration:none">${esc(phone)}</a>`,
+    url && `<a href="${esc(url)}" style="color:${C.cream};text-decoration:none">${esc(url.replace(/^https?:\/\//, ''))}</a>`,
   ].filter(Boolean).join(' &nbsp;·&nbsp; ');
 
   return `<!doctype html>
@@ -100,7 +109,7 @@ function emailHtml({ preheader, eyebrow, title, name, lines, booking, button }) 
     </td></tr>` : '<tr><td style="background:#ffffff;padding:0 0 12px"></td></tr>'}
     <tr><td style="background:${C.ink};padding:28px 40px;text-align:center">
       <div style="font:500 16px/1 ${SERIF};letter-spacing:6px;color:${C.cream};padding-left:6px">FYZIO</div>
-      <div style="font:300 13px/1.7 ${SANS};color:#b3a99c;margin-top:12px">${esc(SITE_NAME)}${contact ? `<br>${contact}` : ''}</div>
+      <div style="font:300 13px/1.7 ${SANS};color:#b3a99c;margin-top:12px">${esc(SITE_NAME)}${links ? `<br>${links}` : ''}</div>
     </td></tr>
     <tr><td align="center" style="padding:18px 20px;font:300 12px/1.6 ${SANS};color:${C.muted}">
       Tento e-mail bol odoslaný automaticky po rezervácii termínu.
@@ -111,43 +120,46 @@ function emailHtml({ preheader, eyebrow, title, name, lines, booking, button }) 
 </body></html>`;
 }
 
-const callButton = CONTACT_PHONE ? { label: 'Zavolať', href: `tel:${CONTACT_PHONE.replace(/\s/g, '')}` } : null;
+const callButton = () => {
+  const { phone } = contact();
+  return phone ? { label: 'Zavolať', href: `tel:${phone.replace(/\s/g, '')}` } : null;
+};
 
 // e-maily pre klienta: { subject, text, html }
 export const clientEmails = {
   received: (b) => ({
     subject: `Prijali sme vašu rezerváciu – ${SITE_NAME}`,
     text: `Dobrý deň, ${b.name},\n\nďakujeme za rezerváciu. Termín vám čoskoro potvrdíme.\n\n${summary(b)}` +
-      `\n\nAk potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.${signature}`,
+      `\n\nAk potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.${signature()}`,
     html: emailHtml({
       preheader: `${b.procedure_name}, ${fmtDate(b.date)} o ${b.time} – termín vám čoskoro potvrdíme.`,
       eyebrow: 'Rezervácia prijatá', title: 'Ďakujeme za rezerváciu', name: b.name, booking: b,
       lines: ['vašu rezerváciu sme prijali. Termín vám čoskoro potvrdíme ďalším e-mailom.',
         'Ak potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.'],
-      button: callButton,
+      button: callButton(),
     }),
   }),
   confirmed: (b) => ({
     subject: `Termín potvrdený – ${fmtDate(b.date)} ${b.time}`,
     text: `Dobrý deň, ${b.name},\n\nváš termín je potvrdený. Tešíme sa na vás.\n\n${summary(b)}` +
-      `\n\nPrineste si prosím pohodlné oblečenie a prípadné lekárske správy.${signature}`,
+      `\n\nPrineste si prosím pohodlné oblečenie a prípadné lekárske správy.${signature()}`,
     html: emailHtml({
       preheader: `Tešíme sa na vás ${fmtDate(b.date)} o ${b.time}.`,
       eyebrow: 'Termín potvrdený', title: 'Tešíme sa na vás', name: b.name, booking: b,
       lines: ['váš termín je potvrdený.',
         'Prineste si prosím pohodlné oblečenie a prípadné lekárske správy. Ak by ste nemohli prísť, dajte nám vedieť čo najskôr.'],
-      button: callButton,
+      button: callButton(),
     }),
   }),
   cancelled: (b) => ({
     subject: `Termín zrušený – ${fmtDate(b.date)} ${b.time}`,
     text: `Dobrý deň, ${b.name},\n\nváš termín bol zrušený.\n\n${summary(b)}` +
-      `\n\nNový termín si môžete rezervovať online${SITE_URL ? ` na ${SITE_URL}` : ''} alebo nám zavolajte.${signature}`,
+      `\n\nNový termín si môžete rezervovať online${contact().url ? ` na ${contact().url}` : ''} alebo nám zavolajte.${signature()}`,
     html: emailHtml({
       preheader: `Termín ${fmtDate(b.date)} o ${b.time} bol zrušený.`,
       eyebrow: 'Termín zrušený', title: 'Váš termín bol zrušený', name: b.name, booking: b,
       lines: ['váš termín bol zrušený.', 'Nový termín si môžete rezervovať online alebo nám zavolajte.'],
-      button: siteUrl ? { label: 'Rezervovať nový termín', href: `${siteUrl}/#rezervacia` } : callButton,
+      button: contact().url ? { label: 'Rezervovať nový termín', href: `${contact().url}/#rezervacia` } : callButton(),
     }),
   }),
 };
@@ -170,9 +182,9 @@ export function notifyNewBooking(b) {
     ADMIN_EMAIL,
     {
       subject: `Nová rezervácia: ${b.procedure_name}, ${fmtDate(b.date)} ${b.time}`,
-      text: `${summary(b)}\n\nKlient:    ${b.name}\nTelefón:   ${b.phone}\nE-mail:    ${b.email || '—'}` +
+      text: `${summary(b)}\n\nKlient:    ${b.name}\nE-mail:    ${b.email || '—'}\nTelefón:   ${b.phone || '—'}` +
         (b.note ? `\n\nPoznámka:\n${b.note}` : '') +
-        (siteUrl ? `\n\nPotvrdiť v administrácii: ${siteUrl}/admin` : ''),
+        (contact().url ? `\n\nPotvrdiť v administrácii: ${contact().url}/admin` : ''),
     },
     b.email || undefined
   );

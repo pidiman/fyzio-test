@@ -9,7 +9,7 @@ Node.js (Express) + SQLite (vstavané `node:sqlite`, žiadny databázový server
 ### Roly
 
 - **Admin** – vidí všetky rezervácie a spravuje procedúry, miestnosti, tím, používateľov a nastavenia.
-- **Solver** – účet napojený na člena tímu; vidí len svoje rezervácie a môže ich potvrdiť, dokončiť alebo zrušiť.
+- **Terapeut** – účet napojený na člena tímu; vidí len svoje rezervácie a môže ich potvrdiť, dokončiť alebo zrušiť.
 
 Každá procedúra má miestnosť a terapeutov (priradia sa v záložke Tím). Termín je voľný, ak je voľná miestnosť
 a aspoň jeden z terapeutov procedúry; klient si na webe môže terapeuta vybrať, inak sa pridelí automaticky.
@@ -63,8 +63,6 @@ Spoločne pre obe varianty (bez `SMTP_USER`/`SMTP_PASS` – relay neoveruje):
 ```bash
 MAIL_FROM="FYZIO Stupava <rezervacie@pidiman.sk>"   # doména, ktorú relay smie odosielať
 ADMIN_EMAIL=kam.chodia.rezervacie@gmail.com
-SITE_URL=https://fyzio.pidiman.sk
-CONTACT_PHONE=+421 900 123 456
 ```
 
 ### Cez externé SMTP (napr. Gmail)
@@ -77,9 +75,10 @@ SMTP_PASS=xxxxxxxxxxxxxxxx          # Gmail: heslo aplikácie (myaccount.google.
 MAIL_FROM="FYZIO Stupava <vas.ucet@gmail.com>"
 ADMIN_EMAIL=kam.chodia.rezervacie@gmail.com
 SITE_NAME="FYZIO Stupava"
-SITE_URL=https://fyzio.pidiman.sk
-CONTACT_PHONE=+421 900 123 456
 ```
+
+Kontaktný telefón a adresa webu (tlačidlo *Zavolať* a odkazy v e-mailoch) sa nastavujú v administrácii
+v *Nastavenia → Kontakt*; `CONTACT_PHONE` a `SITE_URL` v `.env` slúžia len ako počiatočné hodnoty.
 
 Port 465 sa automaticky použije so SSL (`SMTP_SECURE` vynúti iné správanie). Funkčnosť overíte v admine:
 **Nastavenia → E-mailové notifikácie → Poslať testovací e-mail**. Chyby SMTP sa vypisujú do logu

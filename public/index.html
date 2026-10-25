@@ -128,8 +128,8 @@
           <div class="step-h"><span>05</span><h3>Vaše údaje</h3></div>
           <form class="fields" id="contact" novalidate>
             <label>Meno a priezvisko *<input name="name" required minlength="3" autocomplete="name"></label>
-            <label>Telefón *<input name="phone" type="tel" required pattern="\+?[\d\s\/\-]{6,}" autocomplete="tel" placeholder="+421 9xx xxx xxx"></label>
-            <label class="full">E-mail<input name="email" type="email" autocomplete="email"></label>
+            <label>E-mail *<input name="email" type="email" required autocomplete="email"></label>
+            <label class="full">Telefón<input name="phone" type="tel" value="+4219" pattern="\+?[\d\s\/\-]{6,}" autocomplete="tel"></label>
             <label class="full">Poznámka<textarea name="note" rows="3" maxlength="1000" placeholder="S čím vám môžeme pomôcť?"></textarea></label>
           </form>
         </div>
@@ -152,23 +152,23 @@
   </div>
 </section>
 
-<section id="kontakt" class="cta-sec">
+<section id="zavolat" class="cta-sec" hidden>
   <div class="container">
     <div class="cta">
       <span class="eyebrow">Tešíme sa na vás</span>
       <h2>Radšej telefonicky?</h2>
-      <p>Zavolajte na +421 900 123 456, radi vás objednáme.</p>
-      <a href="tel:+421900123456" class="btn btn-primary">Zavolať</a>
+      <p>Zavolajte na <span data-phone></span>, radi vás objednáme.</p>
+      <a href="#" class="btn btn-primary" data-phone-link>Zavolať</a>
     </div>
   </div>
 </section>
 
-<footer>
+<footer id="kontakt">
   <div class="container">
     <div class="foot">
       <div><a href="#" class="logo">FYZIO<small>Move to health</small></a><p>Priestor pre komplexné riešenie pohybu a bolesti.<br>Stupava, Bratislavský kraj</p></div>
       <div><h5>Stránka</h5><ul><li><a href="#preco">Prístup</a></li><li><a href="#sluzby">Cenník</a></li><li><a href="#priestor">Priestor</a></li></ul></div>
-      <div><h5>Kontakt</h5><ul><li><a href="tel:+421900123456">+421 900 123 456</a></li><li><a href="https://www.instagram.com/fyzio.stupava/" target="_blank" rel="noopener">@fyzio.stupava</a></li></ul></div>
+      <div><h5>Kontakt</h5><ul><li data-phone-item hidden><a href="#" data-phone-link><span data-phone></span></a></li><li><a href="https://www.instagram.com/fyzio.stupava/" target="_blank" rel="noopener">@fyzio.stupava</a></li></ul></div>
       <div><h5>Otváracie hodiny</h5><ul class="hours" id="hours"></ul></div>
     </div>
     <div class="copy">© 2026 FYZIO Stupava. Všetky práva vyhradené.</div>

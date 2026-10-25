@@ -5,7 +5,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const DAYS = ['Nedeľa', 'Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota'];
 const DAYS_SHORT = ['Ne', 'Po', 'Ut', 'St', 'Št', 'Pi', 'So'];
 const STATUS = { new: 'Nová', confirmed: 'Potvrdená', done: 'Dokončená', cancelled: 'Zrušená' };
-const ROLE = { admin: 'Admin', solver: 'Solver' };
+const ROLE = { admin: 'Admin', solver: 'Terapeut' };
 const AVATAR = '<svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg>';
 
 const eur = (n) => n.toLocaleString('sk-SK', { style: 'currency', currency: 'EUR', minimumFractionDigits: n % 1 ? 2 : 0 });
@@ -58,7 +58,7 @@ function showLogin() {
 async function showApp() {
   me = await api('/api/admin/me');
   $('#who').textContent = `${me.member_name || me.username} · ${ROLE[me.role]}`;
-  // solver nevidí záložky a filtre určené len adminovi
+  // terapeut nevidí záložky a filtre určené len adminovi
   document.querySelectorAll('[data-admin]').forEach((el) => { el.hidden = !isAdmin(); });
   $('#login').hidden = true;
   $('#app').hidden = false;
@@ -132,7 +132,10 @@ const loadBookings = guard(async () => {
       <div class="bk-main">
         <h4>${esc(b.name)} <span class="badge b-${b.status}">${STATUS[b.status]}</span></h4>
         <p>${esc(b.procedure_name)} · ${eur(b.price)}${b.room_name ? ` · ${esc(b.room_name)}` : ''}</p>
-        <p><a href="tel:${esc(b.phone.replace(/\s/g, ''))}">${esc(b.phone)}</a>${b.email ? ` · <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ''}</p>
+        <p>${[
+          b.email && `<a href="mailto:${esc(b.email)}">${esc(b.email)}</a>`,
+          b.phone && `<a href="tel:${esc(b.phone.replace(/\s/g, ''))}">${esc(b.phone)}</a>`,
+        ].filter(Boolean).join(' · ')}</p>
         ${isAdmin()
           ? `<label class="assign">Terapeut <select data-assign="${b.id}">${memberSelect(b.member_id)}</select></label>`
           : ''}
@@ -492,6 +495,8 @@ const loadSettings = guard(async () => {
   }).join('');
   settingsForm.elements.slot_step.value = s.slot_step;
   settingsForm.elements.max_days_ahead.value = s.max_days_ahead;
+  settingsForm.elements.contact_phone.value = s.contact_phone ?? '';
+  settingsForm.elements.site_url.value = s.site_url ?? '';
   blockedDates = s.blocked_dates;
   renderBlocked();
 
@@ -543,6 +548,8 @@ settingsForm.addEventListener('submit', guard(async (e) => {
       slot_step: Number(settingsForm.elements.slot_step.value),
       max_days_ahead: Number(settingsForm.elements.max_days_ahead.value),
       blocked_dates: blockedDates,
+      contact_phone: settingsForm.elements.contact_phone.value,
+      site_url: settingsForm.elements.site_url.value,
     },
   });
   toast('Nastavenia uložené');

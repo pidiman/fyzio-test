@@ -109,6 +109,9 @@ const DEFAULT_SETTINGS = {
   slot_step: 30,
   max_days_ahead: 60,
   blocked_dates: [],
+  // kontakt do e-mailov a na web; prvé hodnoty sa prevezmú z .env, potom sa menia v administrácii
+  contact_phone: process.env.CONTACT_PHONE || '',
+  site_url: process.env.SITE_URL || '',
 };
 
 const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
