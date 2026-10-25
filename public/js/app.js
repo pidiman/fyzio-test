@@ -148,9 +148,7 @@ $('#submit').addEventListener('click', async () => {
     });
     $('#done-text').textContent =
       `${state.proc.name}, ${fmtDate(state.date)} o ${state.time}. Čoskoro sa vám ozveme s potvrdením termínu.`;
-    $('#booking').hidden = true;
-    $('#done').hidden = false;
-    $('#rezervacia').scrollIntoView({ behavior: 'smooth' });
+    $('#done').showModal();
     form.reset();
   } catch (err) {
     $('#err').textContent = err.message;
@@ -161,10 +159,11 @@ $('#submit').addEventListener('click', async () => {
   }
 });
 
-$('#again').addEventListener('click', () => {
+// potvrdenie sa zatvára len tlačidlom OK, nie klávesom Esc
+$('#done').addEventListener('cancel', (e) => e.preventDefault());
+$('#done-ok').addEventListener('click', () => $('#done').close());
+$('#done').addEventListener('close', () => {
   state.time = null;
-  $('#done').hidden = true;
-  $('#booking').hidden = false;
   loadSlots();
 });
 

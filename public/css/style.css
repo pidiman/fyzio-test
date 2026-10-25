@@ -139,7 +139,10 @@ section{padding:104px 0}
 .summary .btn-primary:hover{background:var(--cream)}
 .summary .btn-primary:disabled{background:rgba(255,255,255,.1);color:#9c9286}
 .err{color:#f0b2a6;font-size:.9rem;margin-top:12px;min-height:1.2em}
-.done{max-width:560px;margin:0 auto;text-align:center;background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:52px 28px;box-shadow:var(--shadow)}
+.done{width:min(560px,100% - 32px);margin:auto;text-align:center;background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:52px 28px;box-shadow:var(--shadow);color:var(--text)}
+.done::backdrop{background:rgba(46,42,38,.55);backdrop-filter:blur(3px)}
+.done .btn{min-width:160px}
+.done .btn:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
 .done .ok{width:72px;height:84px;margin:0 auto 20px;border-radius:999px 999px 4px 4px;background:var(--shell);color:var(--taupe-d);display:grid;place-items:center;font-size:1.8rem}
 .done h3{font-size:1.6rem;margin-bottom:8px}
 .done p{color:var(--muted);margin-bottom:22px}

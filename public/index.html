@@ -144,12 +144,12 @@
       </aside>
     </div>
 
-    <div class="done" id="done" hidden>
+    <dialog class="done" id="done" aria-labelledby="done-title">
       <div class="ok">✓</div>
-      <h3>Ďakujeme, rezervácia je odoslaná</h3>
+      <h3 id="done-title">Ďakujeme, rezervácia je odoslaná</h3>
       <p id="done-text"></p>
-      <button class="btn btn-ghost" id="again">Nová rezervácia</button>
-    </div>
+      <button class="btn btn-primary" id="done-ok" autofocus>OK</button>
+    </dialog>
   </div>
 </section>
 
