@@ -90,6 +90,16 @@ Port 465 sa automaticky použije so SSL (`SMTP_SECURE` vynúti iné správanie).
 
 Oracle Cloud blokuje odchádzajúci port 25 – použite 587 alebo 465.
 
+## SMS (SMSfarm.sk)
+
+Klient s vyplneným telefónom dostane SMS, keď sa jeho termín potvrdí. Prístupové údaje zadáva admin
+v **Nastavenia → SMS notifikácie**: integračné ID a heslo (app.smsfarm.sk → profil) a odosielateľa
+(alias schválený v SMSfarm alebo telefónne číslo). Heslo sa ukladá do databázy a do prehliadača sa už neposiela.
+
+Text je bez diakritiky, aby sa zmestil do jednej SMS (160 znakov). Čísla zadané ako `09xx…` sa odošlú ako `+4219xx…`.
+V tej istej časti je overenie pripojenia (zostatok kreditu, nič sa neodošle), testovacia SMS
+a log všetkých odoslaných SMS vrátane chýb a stavu doručenia. Záznamy staršie ako rok sa mažú.
+
 ## Nasadenie na oracle-free-1 (Docker + Caddy)
 
 Predpoklad: na serveri beží Caddy z `~/docker/proxy` a existuje Docker sieť `web`.

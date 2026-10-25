@@ -8,6 +8,7 @@ import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
   notifyClientVerify, notifyClientCancelled, notifyClientPasswordReset,
 } from './mail.js';
+import { smsConfigured, sendSms, smsCredit, smsDelivery, toIntl, plain, confirmedText } from './sms.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const TIMEZONE = process.env.TIMEZONE || 'Europe/Bratislava';
@@ -504,7 +505,7 @@ app.use('/api/admin', async (req, res, next) => {
 
 const isAdmin = (req) => req.user.role === 'admin';
 app.use(
-  ['/api/admin/procedures', '/api/admin/rooms', '/api/admin/team', '/api/admin/users', '/api/admin/clients', '/api/admin/settings', '/api/admin/mail'],
+  ['/api/admin/procedures', '/api/admin/rooms', '/api/admin/team', '/api/admin/users', '/api/admin/clients', '/api/admin/settings', '/api/admin/mail', '/api/admin/sms'],
   (req, res, next) => {
     if (!isAdmin(req)) throw new HttpError(403, 'Na túto akciu nemáte oprávnenie.');
     next();
@@ -652,6 +653,11 @@ app.patch('/api/admin/bookings/:id', async (req, res) => {
     await db.run("UPDATE bookings SET status = ?, cancel_reason = CASE WHEN ?::text = 'cancelled' THEN cancel_reason ELSE '' END WHERE id = ?",
       status, status, booking.id);
     if (booking.status !== status) notifyStatus(booking, status);
+    // SMS len pri potvrdení a len klientovi s vyplneným telefónom
+    if (status === 'confirmed' && booking.status !== 'confirmed' && booking.phone && smsConfigured(smsCfg())) {
+      sendLoggedSms('confirmed', booking.phone, confirmedText(booking, getSettings().contact_phone), booking.id)
+        .catch((err) => console.error('SMS log:', err.message));
+    }
     // terapeut dostane upozornenie, keď mu rezerváciu potvrdí niekto iný (admin)
     if (status === 'confirmed' && booking.status !== 'confirmed' && booking.member_id && booking.member_id !== req.user.member_id) {
       await notifyMember(booking, 'confirmed');
@@ -941,9 +947,100 @@ app.delete('/api/admin/clients/:id', async (req, res) => {
 
 // ---------- nastavenia (len admin) ----------
 
-app.get('/api/admin/settings', (req, res) => res.json(getSettings()));
+// prístupové údaje SMS majú vlastnú časť (/api/admin/sms), heslo sa do prehliadača neposiela
+app.get('/api/admin/settings', (req, res) => {
+  const { sms_integration_id, sms_integration_code, sms_sender, ...settings } = getSettings();
+  res.json(settings);
+});
 
 app.get('/api/admin/mail', (req, res) => res.json(mailStatus));
+
+// ---------- SMS cez SMSfarm.sk (len admin) ----------
+
+const smsCfg = () => {
+  const s = getSettings();
+  return { id: s.sms_integration_id, code: s.sms_integration_code, sender: s.sms_sender };
+};
+
+// Odošle SMS a zapíše ju do logu (aj neúspešný pokus). Vráti záznam z logu.
+async function sendLoggedSms(kind, phone, message, bookingId = null) {
+  const recipient = toIntl(phone);
+  const text = plain(message);
+  let requestId = '';
+  let error = '';
+  try {
+    if (!recipient) throw new Error('neplatné telefónne číslo');
+    requestId = await sendSms(smsCfg(), recipient, text);
+  } catch (err) {
+    error = err.message;
+    console.error(`SMS pre ${phone} sa nepodarilo odoslať:`, error);
+  }
+  // záznamy staršie ako rok sa mažú (telefónne čísla klientov sa neuchovávajú zbytočne dlho)
+  await db.run("DELETE FROM sms_log WHERE created_at < now() - interval '1 year'");
+  return db.get(`
+    INSERT INTO sms_log (kind, booking_id, phone, recipient, message, status, request_id, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+  `, kind, bookingId, phone, recipient ?? '', text, error ? 'error' : 'sent', String(requestId ?? ''), error);
+}
+
+const smsLog = () => db.all(`
+  SELECT l.*, b.name AS client_name, b.date AS booking_date, b.time AS booking_time
+  FROM sms_log l LEFT JOIN bookings b ON b.id = l.booking_id
+  ORDER BY l.created_at DESC LIMIT 200
+`);
+
+// heslo sa do prehliadača neposiela, len informácia, či je uložené
+app.get('/api/admin/sms', async (req, res) => {
+  const s = getSettings();
+  res.json({
+    integration_id: s.sms_integration_id, sender: s.sms_sender, code_set: !!s.sms_integration_code,
+    configured: smsConfigured(smsCfg()), log: await smsLog(),
+  });
+});
+
+// prázdne heslo = ponechať uložené
+app.put('/api/admin/sms', async (req, res) => {
+  const body = req.body ?? {};
+  const values = { sms_integration_id: str(body.integration_id, 100), sms_sender: str(body.sender, 20) };
+  if (str(body.code, 200)) values.sms_integration_code = str(body.code, 200);
+  if (values.sms_sender && !/^(\+?\d{6,15}|[A-Za-z0-9 .-]{1,11})$/.test(values.sms_sender)) {
+    throw bad('Odosielateľ: alias do 11 znakov (písmená bez diakritiky, čísla) alebo telefónne číslo.');
+  }
+  await saveSettings(values);
+  res.json({ ok: true });
+});
+
+// overenie pripojenia (zostatok kreditu, nič sa neposiela)
+app.post('/api/admin/sms/check', async (req, res) => {
+  try {
+    res.json({ credit: await smsCredit(smsCfg()) });
+  } catch (err) {
+    throw bad(`SMSfarm: ${err.message}`);
+  }
+});
+
+app.post('/api/admin/sms/test', rateLimit(10, 3600e3), async (req, res) => {
+  if (!smsConfigured(smsCfg())) throw bad('Najprv vyplňte a uložte prístupové údaje SMSfarm.');
+  const phone = str(req.body?.phone, 30);
+  if (!toIntl(phone)) throw bad('Zadajte platné telefónne číslo.');
+  const entry = await sendLoggedSms('test', phone, `${process.env.SITE_NAME || 'FYZIO Stupava'}: testovacia SMS z rezervačného systému.`);
+  if (entry.status === 'error') throw bad(`SMS sa nepodarilo odoslať: ${entry.error}`);
+  res.json({ ok: true });
+});
+
+// stav doručenia jednej SMS zo SMSfarm (uloží sa do logu)
+app.post('/api/admin/sms/log/:id/delivery', async (req, res) => {
+  const entry = await db.get("SELECT * FROM sms_log WHERE id = ? AND status = 'sent'", num(req.params.id));
+  if (!entry?.request_id) throw new HttpError(404, 'Záznam neexistuje.');
+  let delivery;
+  try {
+    delivery = await smsDelivery(smsCfg(), entry.request_id, entry.recipient);
+  } catch (err) {
+    throw bad(`SMSfarm: ${err.message}`);
+  }
+  await db.run('UPDATE sms_log SET delivery = ? WHERE id = ?', delivery, entry.id);
+  res.json({ delivery });
+});
 
 app.post('/api/admin/mail/test', async (req, res) => {
   if (!mailStatus.adminEmail) throw bad('ADMIN_EMAIL nie je nastavené.');

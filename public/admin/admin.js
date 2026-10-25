@@ -835,7 +835,90 @@ const loadSettings = guard(async () => {
       ? `Nové rezervácie chodia na ${mail.adminEmail}. Klient dostane e-mail pri prijatí, potvrdení a zrušení termínu.`
       : 'SMTP je nastavené, ale chýba ADMIN_EMAIL – upozornenia na nové rezervácie nechodia.';
   $('#mail-test').hidden = !(mail.configured && mail.adminEmail);
+  await loadSms();
 });
+
+// ---------- SMS ----------
+
+const smsForm = $('#sms-form');
+const SMS_KIND = { confirmed: 'Potvrdenie termínu', test: 'Testovacia' };
+// stavy doručenia zo SMSfarm, ktoré sú konečné a úspešné / neúspešné
+const SMS_OK = ['DELIVERED'];
+const SMS_FAIL = ['INVALID-NUMBER', 'MESSAGE-CANCELLED', 'MESSAGE-EXPIRED', 'MESSAGE-UNDELIVERED', 'COUNTRY-FORBIDDEN', 'SENDING-FAILED'];
+
+async function loadSms() {
+  const sms = await api('/api/admin/sms');
+  const f = smsForm.elements;
+  f.integration_id.value = sms.integration_id;
+  f.sender.value = sms.sender;
+  f.code.value = '';
+  f.code.placeholder = sms.code_set ? 'uložené – nechajte prázdne' : '';
+  $('#sms-status').textContent = sms.configured
+    ? 'Klient s vyplneným telefónom dostane SMS, keď sa jeho termín potvrdí.'
+    : 'SMS sa neodosielajú – vyplňte všetky tri údaje a uložte.';
+  $('#sms-check').hidden = $('#sms-test-panel').hidden = !sms.configured;
+  renderSmsLog(sms.log);
+}
+
+function renderSmsLog(log) {
+  $('#sms-log').innerHTML = log.map((l) => {
+    const delivery = l.delivery
+      ? `<span class="badge ${SMS_OK.includes(l.delivery) ? 'b-confirmed' : SMS_FAIL.includes(l.delivery) ? 'b-cancelled' : 'b-new'}">${esc(l.delivery)}</span>`
+      : '';
+    return `
+    <div class="sms-row">
+      <div class="sms-when">${fmtStamp(l.created_at)}</div>
+      <div class="sms-main">
+        <b>${esc(l.client_name || l.phone)}</b>
+        ${l.client_name ? `<span class="muted-inline">${esc(l.phone)}</span>` : ''}
+        <span class="muted-inline">· ${SMS_KIND[l.kind] ?? esc(l.kind)}${l.booking_date ? ` (${fmtDate(l.booking_date)} ${l.booking_time})` : ''}</span>
+        <p>${esc(l.message)}</p>
+        ${l.error ? `<p class="sms-error">Chyba: ${esc(l.error)}</p>` : ''}
+      </div>
+      <div class="sms-state">
+        <span class="badge ${l.status === 'sent' ? 'b-confirmed' : 'b-cancelled'}">${l.status === 'sent' ? 'Odoslaná' : 'Chyba'}</span>
+        ${delivery}
+        ${l.status === 'sent' ? `<button type="button" class="btn btn-ghost btn-sm" data-sms-delivery="${l.id}">Stav doručenia</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">Zatiaľ nebola odoslaná žiadna SMS.</div>';
+}
+
+smsForm.addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const f = smsForm.elements;
+  await api('/api/admin/sms', {
+    method: 'PUT', body: { integration_id: f.integration_id.value, code: f.code.value, sender: f.sender.value },
+  });
+  toast('Nastavenia SMS uložené');
+  await loadSms();
+}));
+
+$('#sms-check').addEventListener('click', guard(async () => {
+  const { credit } = await api('/api/admin/sms/check', { method: 'POST' });
+  toast(`Pripojenie k SMSfarm funguje, kredit: ${credit.toLocaleString('sk-SK')}`);
+}));
+
+$('#sms-test').addEventListener('click', guard(async () => {
+  const phone = $('#sms-test-phone').value;
+  try {
+    await api('/api/admin/sms/test', { method: 'POST', body: { phone } });
+    toast(`Testovacia SMS odoslaná na ${phone}`);
+  } finally {
+    // aj neúspešný pokus sa zapíše do logu
+    await loadSms();
+  }
+}));
+
+$('#sms-refresh').addEventListener('click', guard(loadSms));
+
+$('#sms-log').addEventListener('click', guard(async (e) => {
+  const btn = e.target.closest('[data-sms-delivery]');
+  if (!btn) return;
+  const { delivery } = await api(`/api/admin/sms/log/${btn.dataset.smsDelivery}/delivery`, { method: 'POST' });
+  toast(`Stav doručenia: ${delivery}`);
+  await loadSms();
+}));
 
 $('#mail-test').addEventListener('click', guard(async () => {
   await api('/api/admin/mail/test', { method: 'POST' });

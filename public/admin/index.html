@@ -246,6 +246,32 @@
         <p class="muted" id="mail-status">Načítavam…</p>
         <button type="button" class="btn btn-ghost btn-sm" id="mail-test">Poslať testovací e-mail</button>
       </div>
+      <form class="panel form-grid" id="sms-form" style="margin-top:16px" autocomplete="off">
+        <h3 class="full">SMS notifikácie (SMSfarm.sk)</h3>
+        <p class="muted full" id="sms-status">Načítavam…</p>
+        <label>Integračné ID<input name="integration_id" maxlength="100" autocomplete="off"></label>
+        <label>Integračné heslo<input name="code" type="password" maxlength="200" autocomplete="new-password"></label>
+        <label>Odosielateľ<input name="sender" maxlength="20" placeholder="napr. FYZIO alebo +4219xx…"></label>
+        <p class="muted full">Integračné ID a heslo nájdete na app.smsfarm.sk v profile. Odosielateľ je alias schválený v SMSfarm
+          (do 11 znakov) alebo vaše telefónne číslo.</p>
+        <div class="full form-actions">
+          <button class="btn btn-primary">Uložiť</button>
+          <button type="button" class="btn btn-ghost" id="sms-check">Overiť pripojenie a kredit</button>
+        </div>
+      </form>
+      <div class="panel" id="sms-test-panel">
+        <h3>Testovacia SMS</h3>
+        <p class="muted">Odošle krátku SMS na zadané číslo (spotrebuje kredit).</p>
+        <div class="add-date">
+          <input type="tel" id="sms-test-phone" maxlength="30" placeholder="+421 9xx xxx xxx">
+          <button type="button" class="btn btn-ghost btn-sm" id="sms-test">Poslať</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="toolbar"><h3>Odoslané SMS</h3><button type="button" class="btn btn-ghost btn-sm" id="sms-refresh">↻ Obnoviť</button></div>
+        <p class="muted">Posledných 200 SMS. Záznamy staršie ako rok sa mažú automaticky.</p>
+        <div class="sms-log" id="sms-log"></div>
+      </div>
     </section>
 
     <!-- Môj účet -->
