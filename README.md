@@ -189,4 +189,3 @@ docker run --rm -v fyzio_fyzio-data:/data -v ~/backups:/b alpine \
 ```bash
 npm test
 ```
-- Pôvodné návrhy dizajnu sú v `navrhy/`.

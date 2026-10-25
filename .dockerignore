@@ -2,7 +2,7 @@ node_modules
 data
 .env
 .git
-navrhy
 *.md
 .github
 deploy.sh
+test
