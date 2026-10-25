@@ -324,7 +324,8 @@ const VERIFY_MS = 3 * 24 * 3600e3;
 
 function sendClientVerification(req, clientId) {
   const token = crypto.randomBytes(32).toString('base64url');
-  db.prepare('DELETE FROM client_tokens WHERE client_id = ? OR expires_at < ?').run(clientId, Date.now());
+  // staršie odkazy ostávajú platné – klient môže kliknúť na ktorýkoľvek z prijatých e-mailov
+  db.prepare('DELETE FROM client_tokens WHERE expires_at < ?').run(Date.now());
   db.prepare('INSERT INTO client_tokens (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
     .run(tokenHash(token), clientId, Date.now() + VERIFY_MS);
   // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
