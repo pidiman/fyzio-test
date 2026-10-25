@@ -82,7 +82,19 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  -- jednorazové odkazy na nastavenie hesla (ukladá sa len hash tokenu)
+  CREATE TABLE IF NOT EXISTS password_tokens (
+    token_hash TEXT    PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  );
+`);
+
 const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+if (!hasColumn('users', 'email')) {
+  db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+}
 if (!hasColumn('procedures', 'room_id')) {
   db.exec('ALTER TABLE procedures ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL');
 }
@@ -112,6 +124,7 @@ const DEFAULT_SETTINGS = {
   // kontakt do e-mailov a na web; prvé hodnoty sa prevezmú z .env, potom sa menia v administrácii
   contact_phone: process.env.CONTACT_PHONE || '',
   site_url: process.env.SITE_URL || '',
+  address: '',
 };
 
 const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');

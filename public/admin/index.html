@@ -22,6 +22,17 @@
   </form>
 </div>
 
+<div class="login" id="reset" hidden>
+  <form class="login-card" id="reset-form">
+    <div class="logo">FYZIO</div>
+    <p>Nastavenie hesla do administrácie</p>
+    <input type="password" name="password" placeholder="Nové heslo (aspoň 8 znakov)" autocomplete="new-password" minlength="8" required autofocus>
+    <input type="password" name="password2" placeholder="Nové heslo znova" autocomplete="new-password" minlength="8" required>
+    <button class="btn btn-primary">Nastaviť heslo</button>
+    <p class="err" id="reset-err"></p>
+  </form>
+</div>
+
 <div id="app" hidden>
   <header>
     <div class="wrap bar">
@@ -144,7 +155,9 @@
         <h3 class="full" id="user-form-title">Nový používateľ</h3>
         <input type="hidden" name="id">
         <label>Prihlasovacie meno *<input name="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9._\-]+" autocomplete="off"></label>
-        <label>Heslo <span id="pw-hint">*</span><input name="password" type="password" minlength="8" autocomplete="new-password"></label>
+        <label>E-mail<input name="email" type="email" maxlength="120" autocomplete="off"></label>
+        <label>Heslo<input name="password" type="password" minlength="8" autocomplete="new-password"></label>
+        <p class="muted full" id="pw-hint"></p>
         <label>Rola
           <select name="role">
             <option value="solver">Terapeut (člen tímu)</option>
@@ -183,6 +196,8 @@
           <p class="muted full">Zobrazuje sa na webe a v e-mailoch pre klientov (tlačidlo Zavolať, odkaz na web).</p>
           <label>Telefón<input name="contact_phone" type="tel" maxlength="30" placeholder="+421 9xx xxx xxx"></label>
           <label>Adresa webu<input name="site_url" type="url" maxlength="200" placeholder="https://fyzio.pidiman.sk"></label>
+          <label class="full">Adresa prevádzky<input name="address" maxlength="200" placeholder="Ulica 12, 900 31 Stupava"></label>
+          <p class="muted full">Podľa adresy sa v pätičke webu zobrazí mapa a tlačidlo Navigovať. Overte si, že ju Google Maps nájde.</p>
         </div>
         <div class="panel">
           <h3>Zatvorené dni</h3>

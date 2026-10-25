@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
-import { mailStatus, sendMail, notifyNewBooking, notifyStatus } from './mail.js';
+import { mailStatus, sendMail, sendAccountInvite, notifyNewBooking, notifyStatus } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const TIMEZONE = process.env.TIMEZONE || 'Europe/Bratislava';
@@ -157,8 +157,8 @@ app.use('/media', express.static(mediaDir, { maxAge: '365d', immutable: true }))
 // ---------- verejné API ----------
 
 app.get('/api/info', (req, res) => {
-  const { hours, blocked_dates, max_days_ahead, contact_phone } = getSettings();
-  res.json({ hours, blocked_dates, max_days_ahead, contact_phone, today: localNow().date });
+  const { hours, blocked_dates, max_days_ahead, contact_phone, address } = getSettings();
+  res.json({ hours, blocked_dates, max_days_ahead, contact_phone, address, today: localNow().date });
 });
 
 app.get('/api/procedures', (req, res) => {
@@ -239,6 +239,41 @@ app.post('/api/admin/login', rateLimit(10, 15 * 60e3), (req, res) => {
   sessions.set(token, { userId: user.id, expires: Date.now() + SESSION_MS });
   res.cookie('sid', token, { httpOnly: true, sameSite: 'strict', secure: req.secure, maxAge: SESSION_MS, path: '/' });
   res.json({ ok: true });
+});
+
+// ---------- nastavenie hesla cez odkaz z e-mailu ----------
+
+const INVITE_MS = 3 * 24 * 3600e3;
+const tokenHash = (token) => crypto.createHash('sha256').update(token).digest('hex');
+const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
+// adresa pre odkaz v e-maile: nastavená adresa webu, inak adresa, na ktorej beží administrácia
+const baseUrl = (req) => getSettings().site_url || `${req.protocol}://${req.get('host')}`;
+
+async function sendInvite(req, userId, isNew) {
+  const user = db.prepare(`
+    SELECT u.id, u.username, u.role, u.email, m.name AS member_name FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
+  `).get(userId);
+  if (!user?.email) throw bad('Používateľ nemá zadaný e-mail.');
+  const token = crypto.randomBytes(32).toString('base64url');
+  db.prepare('DELETE FROM password_tokens WHERE user_id = ? OR expires_at < ?').run(user.id, Date.now());
+  db.prepare('INSERT INTO password_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+    .run(tokenHash(token), user.id, Date.now() + INVITE_MS);
+  // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
+  await sendAccountInvite(user, `${baseUrl(req)}/admin/#heslo=${token}`, isNew);
+}
+
+app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), (req, res) => {
+  const { token, password } = req.body ?? {};
+  const row = typeof token === 'string' &&
+    db.prepare('SELECT user_id FROM password_tokens WHERE token_hash = ? AND expires_at > ?').get(tokenHash(token), Date.now());
+  if (!row) throw bad('Odkaz je neplatný alebo vypršal. Požiadajte admina o nový.');
+  if (typeof password !== 'string' || password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), row.user_id);
+  db.prepare('DELETE FROM password_tokens WHERE user_id = ?').run(row.user_id);
+  endSessions(row.user_id);
+  const { username } = db.prepare('SELECT username FROM users WHERE id = ?').get(row.user_id);
+  res.json({ username });
 });
 
 app.use('/api/admin', (req, res, next) => {
@@ -542,7 +577,7 @@ app.delete('/api/admin/team/:id', (req, res) => {
 
 app.get('/api/admin/users', (req, res) => {
   res.json(db.prepare(`
-    SELECT u.id, u.username, u.role, u.member_id, m.name AS member_name, u.created_at
+    SELECT u.id, u.username, u.email, u.role, u.member_id, m.name AS member_name, u.created_at
     FROM users u LEFT JOIN team_members m ON m.id = u.member_id ORDER BY u.role, u.username
   `).all());
 });
@@ -552,13 +587,16 @@ function userInput(body = {}, isNew) {
     username: str(body.username, 32),
     role: body.role,
     member_id: body.member_id ? Number(body.member_id) : null,
+    email: str(body.email, 120),
     password: typeof body.password === 'string' ? body.password : '',
   };
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(u.username)) throw bad('Prihlasovacie meno: 3 – 32 znakov (písmená bez diakritiky, čísla, . _ -).');
   if (!ROLES.includes(u.role)) throw bad('Neplatná rola.');
   if (u.member_id && !db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(u.member_id)) throw bad('Neznámy člen tímu.');
   if (u.role === 'solver' && !u.member_id) throw bad('Terapeut musí byť priradený k členovi tímu.');
-  if ((isNew || u.password) && u.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
+  if (u.email && !isEmail(u.email)) throw bad('Zadajte platný e-mail.');
+  if (isNew && !u.password && !u.email) throw bad('Zadajte heslo alebo e-mail, na ktorý príde odkaz na nastavenie hesla.');
+  if (u.password && u.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
   return u;
 }
 
@@ -566,12 +604,32 @@ const usernameTaken = (username, exceptId = 0) =>
   !!db.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').get(username, exceptId);
 const adminCount = () => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
 
-app.post('/api/admin/users', (req, res) => {
+// Účet s e-mailom dostane uvítací e-mail s odkazom na nastavenie hesla.
+// Bez zadaného hesla sa dá prihlásiť až po jeho nastavení cez odkaz.
+app.post('/api/admin/users', async (req, res) => {
   const u = userInput(req.body, true);
   if (usernameTaken(u.username)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
-  const result = db.prepare('INSERT INTO users (username, password_hash, role, member_id) VALUES (?, ?, ?, ?)')
-    .run(u.username, hashPassword(u.password), u.role, u.member_id);
-  res.status(201).json({ id: Number(result.lastInsertRowid) });
+  const id = Number(db.prepare('INSERT INTO users (username, password_hash, role, member_id, email) VALUES (?, ?, ?, ?, ?)')
+    .run(u.username, hashPassword(u.password || crypto.randomBytes(24).toString('base64url')), u.role, u.member_id, u.email)
+    .lastInsertRowid);
+  let mailError = null;
+  if (u.email) {
+    try {
+      await sendInvite(req, id, true);
+    } catch (err) {
+      mailError = err.message;
+    }
+  }
+  res.status(201).json({ id, mailed: !!u.email && !mailError, mailError });
+});
+
+app.post('/api/admin/users/:id/invite', async (req, res) => {
+  try {
+    await sendInvite(req, Number(req.params.id), false);
+  } catch (err) {
+    throw err instanceof HttpError ? err : bad(`E-mail sa nepodarilo odoslať: ${err.message}`);
+  }
+  res.json({ ok: true });
 });
 
 app.put('/api/admin/users/:id', (req, res) => {
@@ -581,7 +639,8 @@ app.put('/api/admin/users/:id', (req, res) => {
   if (usernameTaken(u.username, current.id)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
   if (current.role === 'admin' && u.role !== 'admin' && adminCount() === 1) throw bad('Musí zostať aspoň jeden admin.');
 
-  db.prepare('UPDATE users SET username = ?, role = ?, member_id = ? WHERE id = ?').run(u.username, u.role, u.member_id, current.id);
+  db.prepare('UPDATE users SET username = ?, role = ?, member_id = ?, email = ? WHERE id = ?')
+    .run(u.username, u.role, u.member_id, u.email, current.id);
   if (u.password) db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(u.password), current.id);
   // zmena hesla alebo roly odhlási používateľa na ostatných zariadeniach
   if ((u.password || u.role !== current.role) && current.id !== req.user.id) endSessions(current.id);
@@ -631,7 +690,9 @@ app.put('/api/admin/settings', (req, res) => {
   const site_url = str(body.site_url, 200).replace(/\/+$/, '');
   if (site_url && !/^https?:\/\/[^\s/]+\.[^\s]+$/.test(site_url)) throw bad('Adresa webu musí začínať https:// (napr. https://fyzio.pidiman.sk).');
 
-  saveSettings({ hours, slot_step, max_days_ahead, blocked_dates, contact_phone, site_url });
+  const address = str(body.address, 200).replace(/\s+/g, ' ');
+
+  saveSettings({ hours, slot_step, max_days_ahead, blocked_dates, contact_phone, site_url, address });
   res.json({ ok: true });
 });
 

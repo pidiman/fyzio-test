@@ -52,8 +52,32 @@ const isAdmin = () => me?.role === 'admin';
 function showLogin() {
   me = null;
   $('#app').hidden = true;
+  $('#reset').hidden = true;
   $('#login').hidden = false;
 }
+
+// odkaz z e-mailu: /admin/#heslo=<token>
+const resetToken = /^#heslo=([\w-]+)$/.exec(location.hash)?.[1];
+
+$('#reset-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  $('#reset-err').textContent = '';
+  if (f.password.value !== f.password2.value) {
+    $('#reset-err').textContent = 'Heslá sa nezhodujú.';
+    return;
+  }
+  try {
+    const { username } = await api('/api/admin/password-reset', { method: 'POST', body: { token: resetToken, password: f.password.value } });
+    history.replaceState(null, '', location.pathname);
+    showLogin();
+    $('#login-form').elements.username.value = username;
+    $('#login-form').elements.password.focus();
+    toast('Heslo je nastavené, môžete sa prihlásiť');
+  } catch (err) {
+    $('#reset-err').textContent = err.message;
+  }
+});
 
 async function showApp() {
   me = await api('/api/admin/me');
@@ -406,8 +430,13 @@ const loadUsers = guard(async () => {
     <div class="pr us">
       <div class="ic">${u.role === 'admin' ? '★' : '👤'}</div>
       <div><b>${esc(u.username)}</b> <span class="badge ${u.role === 'admin' ? 'b-confirmed' : 'b-done'}">${ROLE[u.role]}</span>
-        <p>${u.member_name ? esc(u.member_name) : u.role === 'solver' ? '<span class="warn">bez člena tímu</span>' : ''}${u.id === me.id ? ' · to ste vy' : ''}</p></div>
+        <p>${[
+          u.member_name ? esc(u.member_name) : u.role === 'solver' && '<span class="warn">bez člena tímu</span>',
+          u.email ? esc(u.email) : '<span class="warn">bez e-mailu</span>',
+          u.id === me.id && 'to ste vy',
+        ].filter(Boolean).join(' · ')}</p></div>
       <div class="bk-actions pr-actions">
+        ${u.email ? `<button class="btn btn-ghost btn-sm" data-invite-user="${u.id}">Poslať odkaz na heslo</button>` : ''}
         <button class="btn btn-ghost btn-sm" data-edit-user="${u.id}">Upraviť</button>
         ${u.id === me.id ? '' : `<button class="btn btn-danger btn-sm" data-delete-user="${u.id}">Vymazať</button>`}
       </div>
@@ -422,9 +451,11 @@ function openUserForm(u) {
   f.username.value = u?.username ?? '';
   f.role.value = u?.role ?? 'solver';
   f.member_id.value = u?.member_id ?? '';
-  f.password.required = !u;
-  f.password.placeholder = u ? 'nechajte prázdne = bez zmeny' : 'aspoň 8 znakov';
-  $('#pw-hint').textContent = u ? '' : '*';
+  f.email.value = u?.email ?? '';
+  f.password.placeholder = u ? 'nechajte prázdne = bez zmeny' : 'nepovinné, ak zadáte e-mail';
+  $('#pw-hint').textContent = u
+    ? 'Heslo vyplňte len ak ho chcete zmeniť. Používateľovi s e-mailom môžete poslať odkaz na nastavenie hesla.'
+    : 'Ak zadáte e-mail, príde naň uvítací e-mail s odkazom na nastavenie hesla (platí 3 dni). Heslo potom nemusíte vyplniť.';
   userForm.hidden = false;
   userForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
   f.username.focus();
@@ -436,11 +467,15 @@ $('#user-cancel').addEventListener('click', () => { userForm.hidden = true; });
 userForm.addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const f = userForm.elements;
-  const body = { username: f.username.value, role: f.role.value, member_id: f.member_id.value || null, password: f.password.value };
+  const body = {
+    username: f.username.value, email: f.email.value, role: f.role.value,
+    member_id: f.member_id.value || null, password: f.password.value,
+  };
   const id = f.id.value;
-  await api(id ? `/api/admin/users/${id}` : '/api/admin/users', { method: id ? 'PUT' : 'POST', body });
+  const result = await api(id ? `/api/admin/users/${id}` : '/api/admin/users', { method: id ? 'PUT' : 'POST', body });
   userForm.hidden = true;
-  toast('Používateľ uložený');
+  if (result.mailError) toast(`Používateľ vytvorený, ale e-mail sa nepodarilo odoslať: ${result.mailError}`, true);
+  else toast(result.mailed ? `Používateľ vytvorený, e-mail odoslaný na ${body.email}` : 'Používateľ uložený');
   // zmena vlastnej roly sa prejaví hneď
   if (Number(id) === me.id) return showApp();
   loadUsers();
@@ -449,6 +484,14 @@ userForm.addEventListener('submit', guard(async (e) => {
 $('#users').addEventListener('click', guard(async (e) => {
   const edit = e.target.closest('[data-edit-user]');
   if (edit) return openUserForm(users.find((u) => u.id === Number(edit.dataset.editUser)));
+
+  const invite = e.target.closest('[data-invite-user]');
+  if (invite) {
+    const u = users.find((x) => x.id === Number(invite.dataset.inviteUser));
+    if (!confirm(`Poslať ${u.email} odkaz na nastavenie hesla? Súčasné heslo bude platiť, kým si nastaví nové.`)) return;
+    await api(`/api/admin/users/${u.id}/invite`, { method: 'POST' });
+    return toast(`Odkaz odoslaný na ${u.email}`);
+  }
 
   const del = e.target.closest('[data-delete-user]');
   if (del && confirm('Vymazať používateľa? Prihlásenie mu prestane fungovať.')) {
@@ -497,6 +540,7 @@ const loadSettings = guard(async () => {
   settingsForm.elements.max_days_ahead.value = s.max_days_ahead;
   settingsForm.elements.contact_phone.value = s.contact_phone ?? '';
   settingsForm.elements.site_url.value = s.site_url ?? '';
+  settingsForm.elements.address.value = s.address ?? '';
   blockedDates = s.blocked_dates;
   renderBlocked();
 
@@ -550,6 +594,7 @@ settingsForm.addEventListener('submit', guard(async (e) => {
       blocked_dates: blockedDates,
       contact_phone: settingsForm.elements.contact_phone.value,
       site_url: settingsForm.elements.site_url.value,
+      address: settingsForm.elements.address.value,
     },
   });
   toast('Nastavenia uložené');
@@ -557,4 +602,8 @@ settingsForm.addEventListener('submit', guard(async (e) => {
 
 // ---------- štart ----------
 
-fetch('/api/admin/me').then((res) => (res.ok ? showApp() : showLogin()), showLogin);
+if (resetToken) {
+  $('#reset').hidden = false;
+} else {
+  fetch('/api/admin/me').then((res) => (res.ok ? showApp() : showLogin()), showLogin);
+}

@@ -72,6 +72,15 @@ function renderContact() {
   document.querySelectorAll('[data-phone-item]').forEach((el) => { el.hidden = !phone; });
   document.querySelectorAll('[data-phone]').forEach((el) => { el.textContent = phone; });
   document.querySelectorAll('[data-phone-link]').forEach((el) => { el.href = `tel:${phone.replace(/\s/g, '')}`; });
+
+  // mapa a navigácia podľa adresy z administrácie
+  const { address } = state.info;
+  $('#map').hidden = !address;
+  if (!address) return;
+  const q = encodeURIComponent(address);
+  $('#address').textContent = address;
+  $('#map iframe').src = `https://www.google.com/maps?q=${q}&z=15&output=embed`;
+  $('#navigate').href = `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
 function renderProcList() {

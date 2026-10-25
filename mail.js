@@ -65,10 +65,10 @@ const C = {
 const SERIF = "'Playfair Display',Georgia,'Times New Roman',serif";
 const SANS = "Jost,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
-function emailHtml({ preheader, eyebrow, title, name, lines, booking, button }) {
-  const rows = details(booking).map(([k, v], i) => `
+function emailHtml({ preheader, eyebrow, title, name, lines, rows: items, button, footnote }) {
+  const rows = items.map(([k, v], i) => `
     <tr>
-      <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:500 11px/1.4 ${SANS};letter-spacing:2px;text-transform:uppercase;color:${C.taupeD};width:110px;vertical-align:top">${k}</td>
+      <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:500 11px/1.4 ${SANS};letter-spacing:2px;text-transform:uppercase;color:${C.taupeD};width:120px;padding-right:12px;vertical-align:top">${k}</td>
       <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:400 16px/1.4 ${SANS};color:${C.ink}">${esc(v)}</td>
     </tr>`).join('');
   const { phone, url } = contact();
@@ -112,7 +112,7 @@ function emailHtml({ preheader, eyebrow, title, name, lines, booking, button }) 
       <div style="font:300 13px/1.7 ${SANS};color:#b3a99c;margin-top:12px">${esc(SITE_NAME)}${links ? `<br>${links}` : ''}</div>
     </td></tr>
     <tr><td align="center" style="padding:18px 20px;font:300 12px/1.6 ${SANS};color:${C.muted}">
-      Tento e-mail bol odoslaný automaticky po rezervácii termínu.
+      ${esc(footnote)}
     </td></tr>
   </table>
 </td></tr>
@@ -125,6 +125,8 @@ const callButton = () => {
   return phone ? { label: 'Zavolať', href: `tel:${phone.replace(/\s/g, '')}` } : null;
 };
 
+const BOOKING_FOOTNOTE = 'Tento e-mail bol odoslaný automaticky po rezervácii termínu.';
+
 // e-maily pre klienta: { subject, text, html }
 export const clientEmails = {
   received: (b) => ({
@@ -133,7 +135,7 @@ export const clientEmails = {
       `\n\nAk potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.${signature()}`,
     html: emailHtml({
       preheader: `${b.procedure_name}, ${fmtDate(b.date)} o ${b.time} – termín vám čoskoro potvrdíme.`,
-      eyebrow: 'Rezervácia prijatá', title: 'Ďakujeme za rezerváciu', name: b.name, booking: b,
+      eyebrow: 'Rezervácia prijatá', title: 'Ďakujeme za rezerváciu', name: b.name, rows: details(b), footnote: BOOKING_FOOTNOTE,
       lines: ['vašu rezerváciu sme prijali. Termín vám čoskoro potvrdíme ďalším e-mailom.',
         'Ak potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.'],
       button: callButton(),
@@ -145,7 +147,7 @@ export const clientEmails = {
       `\n\nPrineste si prosím pohodlné oblečenie a prípadné lekárske správy.${signature()}`,
     html: emailHtml({
       preheader: `Tešíme sa na vás ${fmtDate(b.date)} o ${b.time}.`,
-      eyebrow: 'Termín potvrdený', title: 'Tešíme sa na vás', name: b.name, booking: b,
+      eyebrow: 'Termín potvrdený', title: 'Tešíme sa na vás', name: b.name, rows: details(b), footnote: BOOKING_FOOTNOTE,
       lines: ['váš termín je potvrdený.',
         'Prineste si prosím pohodlné oblečenie a prípadné lekárske správy. Ak by ste nemohli prísť, dajte nám vedieť čo najskôr.'],
       button: callButton(),
@@ -157,16 +159,37 @@ export const clientEmails = {
       `\n\nNový termín si môžete rezervovať online${contact().url ? ` na ${contact().url}` : ''} alebo nám zavolajte.${signature()}`,
     html: emailHtml({
       preheader: `Termín ${fmtDate(b.date)} o ${b.time} bol zrušený.`,
-      eyebrow: 'Termín zrušený', title: 'Váš termín bol zrušený', name: b.name, booking: b,
+      eyebrow: 'Termín zrušený', title: 'Váš termín bol zrušený', name: b.name, rows: details(b), footnote: BOOKING_FOOTNOTE,
       lines: ['váš termín bol zrušený.', 'Nový termín si môžete rezervovať online alebo nám zavolajte.'],
       button: contact().url ? { label: 'Rezervovať nový termín', href: `${contact().url}/#rezervacia` } : callButton(),
     }),
   }),
 };
 
-export async function sendMail(to, subject, text) {
+export async function sendMail(to, subject, text, html) {
   if (!transport) throw new Error('SMTP nie je nastavené.');
-  await transport.sendMail({ from: MAIL_FROM || SMTP_USER, to, subject, text });
+  await transport.sendMail({ from: MAIL_FROM || SMTP_USER, to, subject, text, html });
+}
+
+const ROLE_NAMES = { admin: 'Admin', solver: 'Terapeut' };
+
+// Pozvánka do administrácie s odkazom na nastavenie hesla; chyba sa vráti volajúcemu
+export async function sendAccountInvite(user, link, isNew) {
+  const name = user.member_name || user.username;
+  const title = isNew ? 'Vitajte v tíme' : 'Nastavenie hesla';
+  const intro = isNew
+    ? `bol vám vytvorený účet do administrácie ${SITE_NAME}. Heslo si nastavíte cez tlačidlo nižšie.`
+    : 'posielame vám odkaz na nastavenie nového hesla do administrácie.';
+  const rows = [['Prihlásenie', user.username], ['Rola', ROLE_NAMES[user.role]]];
+  const text = `Dobrý deň, ${name},\n\n${intro}\n\nPrihlasovacie meno: ${user.username}\n` +
+    `Nastaviť heslo: ${link}\n\nOdkaz platí 3 dni a dá sa použiť len raz.${signature()}`;
+  await sendMail(user.email, isNew ? `Váš účet – ${SITE_NAME}` : `Nastavenie hesla – ${SITE_NAME}`, text, emailHtml({
+    preheader: `Prihlasovacie meno: ${user.username}. Odkaz na nastavenie hesla platí 3 dni.`,
+    eyebrow: 'Administrácia', title, name, rows,
+    lines: [esc(intro), 'Odkaz platí 3 dni a dá sa použiť len raz. Ak ste o účet nežiadali, e-mail môžete ignorovať.'],
+    button: { label: 'Nastaviť heslo', href: link },
+    footnote: 'Tento e-mail bol odoslaný automaticky z administrácie.',
+  }));
 }
 
 // Odoslanie na pozadí – chyba e-mailu nesmie zhodiť rezerváciu
