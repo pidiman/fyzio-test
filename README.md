@@ -22,7 +22,7 @@ cp .env.example .env      # nastav ADMIN_PASSWORD
 npm run dev               # http://localhost:3000
 ```
 
-Vyžaduje Node.js 22.13 alebo novší. Databáza sa vytvorí v `data/fyzio.db` a pri prvom spustení sa naplní ukážkovými procedúrami.
+Vyžaduje Node.js 24 alebo novší. Databáza sa vytvorí v `data/fyzio.db` a pri prvom spustení sa naplní ukážkovými procedúrami.
 Pri prvom spustení sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (ak nie je nastavené, server vypíše dočasné heslo).
 Ďalšie účty sa zakladajú v administrácii, `ADMIN_PASSWORD` sa potom už nepoužíva – heslo zmeníte v záložke *Môj účet*.
 
@@ -181,5 +181,12 @@ docker run --rm -v fyzio_fyzio-data:/data -v ~/backups:/b alpine \
 
 - Rezervácie sa nesmú prekrývať v rovnakej miestnosti ani u rovnakého terapeuta.
 - Fotky tímu sú v `data/media` (v Dockeri vo volume `fyzio-data`, zálohujú sa spolu s databázou).
-- Prihlásenia do adminu sa držia v pamäti, po reštarte kontajnera sa treba prihlásiť znova.
+- Prihlásenia do adminu sa ukladajú do databázy (len hash tokenu), reštart ani nasadenie nikoho neodhlási.
+- Fonty (Jost, Playfair Display) sú v `public/fonts`, web nenačítava nič z Google Fonts.
+
+## Testy
+
+```bash
+npm test
+```
 - Pôvodné návrhy dizajnu sú v `navrhy/`.

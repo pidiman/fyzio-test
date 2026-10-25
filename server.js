@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
+import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
 } from './mail.js';
@@ -52,17 +53,6 @@ if (!db.prepare('SELECT 1 FROM users').get()) {
 
 // ---------- pomocné funkcie (dátumy a časy sú v lokálnom čase prevádzky) ----------
 
-const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-const toTime = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-const isTime = (s) => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
-const isDate = (s) =>
-  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
-  new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) === s;
-const addDays = (date, n) => {
-  const d = new Date(date + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const ids = (v) => (Array.isArray(v) ? [...new Set(v.map(Number).filter(Number.isInteger))] : []);
 
@@ -77,8 +67,6 @@ function localNow() {
 
 // ---------- voľné termíny ----------
 
-const overlaps = (ranges, start, end) => ranges.some(([s, e]) => start < e && s < end);
-
 // column je vždy pevný názov stĺpca z kódu, nikdy vstup od používateľa
 const busy = (date, column, id) => db
   .prepare(`SELECT time, end_time FROM bookings WHERE date = ? AND ${column} = ? AND status != 'cancelled'`)
@@ -90,37 +78,22 @@ const procedureMembers = (procedureId) => db.prepare(`
   WHERE pm.procedure_id = ? AND m.active = 1 ORDER BY m.sort, m.name
 `).all(procedureId).map((r) => r.id);
 
-// Vráti mapu voľný čas → členovia tímu, ktorí vtedy môžu procedúru robiť.
-// Termín je voľný, ak je voľná miestnosť procedúry a aspoň jeden jej terapeut
-// (procedúra bez priradených terapeutov sa riadi len miestnosťou).
+// voľné termíny procedúry v daný deň (pozri freeSlots), memberId obmedzí výber na jedného terapeuta
 function availability(date, proc, memberId) {
-  const result = new Map();
-  if (!isDate(date)) return result;
-  const settings = getSettings();
-  const now = localNow();
-  if (date < now.date || date > addDays(now.date, settings.max_days_ahead)) return result;
-  if (settings.blocked_dates.includes(date)) return result;
-
-  const hours = settings.hours[new Date(date + 'T00:00:00Z').getUTCDay()];
-  if (!hours) return result;
-
+  if (!isDate(date)) return new Map();
   let members = procedureMembers(proc.id);
   if (memberId) {
-    if (!members.includes(memberId)) return result;
+    if (!members.includes(memberId)) return new Map();
     members = [memberId];
   }
-  const roomBusy = proc.room_id ? busy(date, 'room_id', proc.room_id) : [];
-  const memberBusy = members.map((id) => [id, busy(date, 'member_id', id)]);
-
-  for (let t = toMin(hours[0]); t + proc.duration_min <= toMin(hours[1]); t += settings.slot_step) {
-    if (date === now.date && t <= now.min) continue;
-    const end = t + proc.duration_min;
-    if (overlaps(roomBusy, t, end)) continue;
-    const free = memberBusy.filter(([, ranges]) => !overlaps(ranges, t, end)).map(([id]) => id);
-    if (members.length && !free.length) continue;
-    result.set(toTime(t), free);
-  }
-  return result;
+  return freeSlots({
+    date,
+    now: localNow(),
+    settings: getSettings(),
+    duration: proc.duration_min,
+    roomBusy: proc.room_id ? busy(date, 'room_id', proc.room_id) : [],
+    memberBusy: members.map((id) => [id, busy(date, 'member_id', id)]),
+  });
 }
 
 // prekrytie rezervácie s inou v rovnakej miestnosti alebo u rovnakého terapeuta
@@ -227,18 +200,19 @@ app.post('/api/bookings', rateLimit(10, 3600e3), (req, res) => {
 
 // ---------- prihlásenie ----------
 
-const sessions = new Map();
+const tokenHash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const sessionToken = (req) => /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie || '')?.[1];
-const endSessions = (userId) => {
-  for (const [token, s] of sessions) if (s.userId === userId) sessions.delete(token);
-};
+const endSession = (token) => token && db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+const endSessions = (userId) => db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 
 app.post('/api/admin/login', rateLimit(10, 15 * 60e3), (req, res) => {
   const user = db.prepare('SELECT id, password_hash FROM users WHERE username = ?').get(str(req.body?.username, 64));
   const ok = verifyPassword(String(req.body?.password ?? ''), user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) throw new HttpError(401, 'Nesprávne meno alebo heslo.');
   const token = crypto.randomBytes(32).toString('base64url');
-  sessions.set(token, { userId: user.id, expires: Date.now() + SESSION_MS });
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+    .run(tokenHash(token), user.id, Date.now() + SESSION_MS);
   res.cookie('sid', token, { httpOnly: true, sameSite: 'strict', secure: req.secure, maxAge: SESSION_MS, path: '/' });
   res.json({ ok: true });
 });
@@ -246,7 +220,6 @@ app.post('/api/admin/login', rateLimit(10, 15 * 60e3), (req, res) => {
 // ---------- nastavenie hesla cez odkaz z e-mailu ----------
 
 const INVITE_MS = 3 * 24 * 3600e3;
-const tokenHash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
 // adresa pre odkaz v e-maile: nastavená adresa webu, inak adresa, na ktorej beží administrácia
@@ -287,13 +260,13 @@ app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), (req, res) => {
 
 app.use('/api/admin', (req, res, next) => {
   const token = sessionToken(req);
-  const session = token && sessions.get(token);
-  const user = session && session.expires > Date.now() && db.prepare(`
+  const user = token && db.prepare(`
     SELECT u.id, u.username, u.role, u.member_id, m.name AS member_name
-    FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
-  `).get(session.userId);
+    FROM sessions s JOIN users u ON u.id = s.user_id LEFT JOIN team_members m ON m.id = u.member_id
+    WHERE s.token_hash = ? AND s.expires_at > ?
+  `).get(tokenHash(token), Date.now());
   if (!user) {
-    if (token) sessions.delete(token);
+    endSession(token);
     throw new HttpError(401, 'Neprihlásený.');
   }
   req.user = user;
@@ -355,7 +328,7 @@ app.put('/api/admin/me/profile', (req, res) => {
 });
 
 app.post('/api/admin/logout', (req, res) => {
-  sessions.delete(sessionToken(req));
+  endSession(sessionToken(req));
   res.clearCookie('sid', { path: '/' });
   res.json({ ok: true });
 });
