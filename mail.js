@@ -36,13 +36,121 @@ const fmtDate = (d) => {
   return `${DAYS[new Date(d + 'T00:00:00Z').getUTCDay()]} ${day}. ${m}. ${y}`;
 };
 const eur = (n) => n.toLocaleString('sk-SK', { style: 'currency', currency: 'EUR' });
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const siteUrl = SITE_URL.replace(/\/$/, '');
 const signature = `\n\n${SITE_NAME}${CONTACT_PHONE ? `\nTel.: ${CONTACT_PHONE}` : ''}${SITE_URL ? `\n${SITE_URL}` : ''}`;
 
-const summary = (b) => [
-  `Procedúra: ${b.procedure_name}`,
-  `Termín:    ${fmtDate(b.date)}, ${b.time} – ${b.end_time}`,
-  `Cena:      ${eur(b.price)}`,
-].join('\n');
+const details = (b) => [
+  ['Procedúra', b.procedure_name],
+  ['Termín', `${fmtDate(b.date)}, ${b.time} – ${b.end_time}`],
+  ...(b.member_name ? [['Terapeut', b.member_name]] : []),
+  ['Cena', eur(b.price)],
+];
+const summary = (b) => details(b).map(([k, v]) => `${(k + ':').padEnd(11)}${v}`).join('\n');
+
+// ---------- HTML e-maily pre klientov (farby webu, tabuľky a inline štýly kvôli e-mailovým klientom) ----------
+
+const C = {
+  ink: '#2e2a26', text: '#3a3530', muted: '#7d7469', taupe: '#c5b9a8', taupeD: '#8e8172',
+  linen: '#ebe5dc', shell: '#f4f0ea', cream: '#faf8f4', brass: '#a8875a',
+};
+const SERIF = "'Playfair Display',Georgia,'Times New Roman',serif";
+const SANS = "Jost,'Helvetica Neue',Helvetica,Arial,sans-serif";
+
+function emailHtml({ preheader, eyebrow, title, name, lines, booking, button }) {
+  const rows = details(booking).map(([k, v], i) => `
+    <tr>
+      <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:500 11px/1.4 ${SANS};letter-spacing:2px;text-transform:uppercase;color:${C.taupeD};width:110px;vertical-align:top">${k}</td>
+      <td style="padding:12px 0;${i ? `border-top:1px solid ${C.linen};` : ''}font:400 16px/1.4 ${SANS};color:${C.ink}">${esc(v)}</td>
+    </tr>`).join('');
+  const contact = [
+    CONTACT_PHONE && `<a href="tel:${esc(CONTACT_PHONE.replace(/\s/g, ''))}" style="color:${C.cream};text-decoration:none">${esc(CONTACT_PHONE)}</a>`,
+    siteUrl && `<a href="${esc(siteUrl)}" style="color:${C.cream};text-decoration:none">${esc(siteUrl.replace(/^https?:\/\//, ''))}</a>`,
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+  return `<!doctype html>
+<html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><title>${esc(title)}</title></head>
+<body style="margin:0;padding:0;background:${C.shell}">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.shell}">
+<tr><td align="center" style="padding:32px 12px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px">
+    <tr><td align="center" style="padding:8px 0 28px">
+      <div style="font:500 26px/1 ${SERIF};letter-spacing:9px;color:${C.ink};padding-left:9px">FYZIO</div>
+      <div style="font:600 9px/1 ${SANS};letter-spacing:3px;text-transform:uppercase;color:${C.taupeD};margin-top:8px">Move to health</div>
+    </td></tr>
+    <tr><td style="background:${C.taupe};border-radius:280px 280px 0 0;padding:56px 40px 36px;text-align:center">
+      <div style="font:500 11px/1 ${SANS};letter-spacing:3px;text-transform:uppercase;color:${C.ink};opacity:.75">${esc(eyebrow)}</div>
+      <h1 style="margin:14px 0 0;font:500 28px/1.2 ${SERIF};text-transform:uppercase;letter-spacing:.5px;color:${C.ink}">${esc(title)}</h1>
+    </td></tr>
+    <tr><td style="background:#ffffff;padding:36px 40px 12px">
+      <p style="margin:0 0 14px;font:400 16px/1.6 ${SANS};color:${C.text}">Dobrý deň, ${esc(name)},</p>
+      ${lines.map((l) => `<p style="margin:0 0 14px;font:300 16px/1.6 ${SANS};color:${C.text}">${l}</p>`).join('')}
+    </td></tr>
+    <tr><td style="background:#ffffff;padding:8px 40px 28px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.cream};border:1px solid ${C.linen}">
+        <tr><td style="padding:10px 24px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${button ? `<tr><td align="center" style="background:#ffffff;padding:4px 40px 40px">
+      <a href="${esc(button.href)}" style="display:inline-block;background:${C.ink};color:${C.cream};font:500 12px/1 ${SANS};letter-spacing:2.5px;text-transform:uppercase;text-decoration:none;padding:16px 32px">${esc(button.label)}</a>
+    </td></tr>` : '<tr><td style="background:#ffffff;padding:0 0 12px"></td></tr>'}
+    <tr><td style="background:${C.ink};padding:28px 40px;text-align:center">
+      <div style="font:500 16px/1 ${SERIF};letter-spacing:6px;color:${C.cream};padding-left:6px">FYZIO</div>
+      <div style="font:300 13px/1.7 ${SANS};color:#b3a99c;margin-top:12px">${esc(SITE_NAME)}${contact ? `<br>${contact}` : ''}</div>
+    </td></tr>
+    <tr><td align="center" style="padding:18px 20px;font:300 12px/1.6 ${SANS};color:${C.muted}">
+      Tento e-mail bol odoslaný automaticky po rezervácii termínu.
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+const callButton = CONTACT_PHONE ? { label: 'Zavolať', href: `tel:${CONTACT_PHONE.replace(/\s/g, '')}` } : null;
+
+// e-maily pre klienta: { subject, text, html }
+export const clientEmails = {
+  received: (b) => ({
+    subject: `Prijali sme vašu rezerváciu – ${SITE_NAME}`,
+    text: `Dobrý deň, ${b.name},\n\nďakujeme za rezerváciu. Termín vám čoskoro potvrdíme.\n\n${summary(b)}` +
+      `\n\nAk potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.${signature}`,
+    html: emailHtml({
+      preheader: `${b.procedure_name}, ${fmtDate(b.date)} o ${b.time} – termín vám čoskoro potvrdíme.`,
+      eyebrow: 'Rezervácia prijatá', title: 'Ďakujeme za rezerváciu', name: b.name, booking: b,
+      lines: ['vašu rezerváciu sme prijali. Termín vám čoskoro potvrdíme ďalším e-mailom.',
+        'Ak potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.'],
+      button: callButton,
+    }),
+  }),
+  confirmed: (b) => ({
+    subject: `Termín potvrdený – ${fmtDate(b.date)} ${b.time}`,
+    text: `Dobrý deň, ${b.name},\n\nváš termín je potvrdený. Tešíme sa na vás.\n\n${summary(b)}` +
+      `\n\nPrineste si prosím pohodlné oblečenie a prípadné lekárske správy.${signature}`,
+    html: emailHtml({
+      preheader: `Tešíme sa na vás ${fmtDate(b.date)} o ${b.time}.`,
+      eyebrow: 'Termín potvrdený', title: 'Tešíme sa na vás', name: b.name, booking: b,
+      lines: ['váš termín je potvrdený.',
+        'Prineste si prosím pohodlné oblečenie a prípadné lekárske správy. Ak by ste nemohli prísť, dajte nám vedieť čo najskôr.'],
+      button: callButton,
+    }),
+  }),
+  cancelled: (b) => ({
+    subject: `Termín zrušený – ${fmtDate(b.date)} ${b.time}`,
+    text: `Dobrý deň, ${b.name},\n\nváš termín bol zrušený.\n\n${summary(b)}` +
+      `\n\nNový termín si môžete rezervovať online${SITE_URL ? ` na ${SITE_URL}` : ''} alebo nám zavolajte.${signature}`,
+    html: emailHtml({
+      preheader: `Termín ${fmtDate(b.date)} o ${b.time} bol zrušený.`,
+      eyebrow: 'Termín zrušený', title: 'Váš termín bol zrušený', name: b.name, booking: b,
+      lines: ['váš termín bol zrušený.', 'Nový termín si môžete rezervovať online alebo nám zavolajte.'],
+      button: siteUrl ? { label: 'Rezervovať nový termín', href: `${siteUrl}/#rezervacia` } : callButton,
+    }),
+  }),
+};
 
 export async function sendMail(to, subject, text) {
   if (!transport) throw new Error('SMTP nie je nastavené.');
@@ -50,44 +158,27 @@ export async function sendMail(to, subject, text) {
 }
 
 // Odoslanie na pozadí – chyba e-mailu nesmie zhodiť rezerváciu
-function sendLater(to, subject, text, replyTo) {
+function sendLater(to, { subject, text, html }, replyTo) {
   if (!transport || !to) return;
   transport
-    .sendMail({ from: MAIL_FROM || SMTP_USER, to, subject, text, replyTo })
+    .sendMail({ from: MAIL_FROM || SMTP_USER, to, subject, text, html, replyTo })
     .catch((err) => console.error(`E-mail pre ${to} sa nepodarilo odoslať:`, err.message));
 }
 
 export function notifyNewBooking(b) {
   sendLater(
     ADMIN_EMAIL,
-    `Nová rezervácia: ${b.procedure_name}, ${fmtDate(b.date)} ${b.time}`,
-    `${summary(b)}\n\nKlient:    ${b.name}\nTelefón:   ${b.phone}\nE-mail:    ${b.email || '—'}` +
-      (b.note ? `\n\nPoznámka:\n${b.note}` : '') +
-      (SITE_URL ? `\n\nPotvrdiť v administrácii: ${SITE_URL.replace(/\/$/, '')}/admin` : ''),
+    {
+      subject: `Nová rezervácia: ${b.procedure_name}, ${fmtDate(b.date)} ${b.time}`,
+      text: `${summary(b)}\n\nKlient:    ${b.name}\nTelefón:   ${b.phone}\nE-mail:    ${b.email || '—'}` +
+        (b.note ? `\n\nPoznámka:\n${b.note}` : '') +
+        (siteUrl ? `\n\nPotvrdiť v administrácii: ${siteUrl}/admin` : ''),
+    },
     b.email || undefined
   );
-  sendLater(
-    b.email,
-    `Prijali sme vašu rezerváciu – ${SITE_NAME}`,
-    `Dobrý deň, ${b.name},\n\nďakujeme za rezerváciu. Termín vám čoskoro potvrdíme.\n\n${summary(b)}` +
-      `\n\nAk potrebujete termín zmeniť alebo zrušiť, ozvite sa nám prosím.${signature}`
-  );
+  sendLater(b.email, clientEmails.received(b));
 }
 
 export function notifyStatus(b, status) {
-  if (status === 'confirmed') {
-    sendLater(
-      b.email,
-      `Termín potvrdený – ${fmtDate(b.date)} ${b.time}`,
-      `Dobrý deň, ${b.name},\n\nváš termín je potvrdený. Tešíme sa na vás.\n\n${summary(b)}` +
-        `\n\nPrineste si prosím pohodlné oblečenie a prípadné lekárske správy.${signature}`
-    );
-  } else if (status === 'cancelled') {
-    sendLater(
-      b.email,
-      `Termín zrušený – ${fmtDate(b.date)} ${b.time}`,
-      `Dobrý deň, ${b.name},\n\nváš termín bol zrušený.\n\n${summary(b)}` +
-        `\n\nNový termín si môžete rezervovať online${SITE_URL ? ` na ${SITE_URL}` : ''} alebo nám zavolajte.${signature}`
-    );
-  }
+  if (clientEmails[status]) sendLater(b.email, clientEmails[status](b));
 }
