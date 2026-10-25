@@ -119,9 +119,45 @@ a otvoriť http://localhost:8092 a http://localhost:8092/admin.
 
 ### Aktualizácia
 
+Automaticky pri každom pushi do `main` (GitHub Actions → `.github/workflows/deploy.yml`), alebo ručne:
+
 ```bash
-cd ~/docker/fyzio && git pull && docker compose up -d --build
+~/docker/fyzio/deploy.sh
 ```
+
+`deploy.sh` zahodí lokálne zmeny v sledovaných súboroch na serveri (`git reset --hard origin/main`);
+`.env` a `docker-compose.override.yml` nie sú v gite, tie ostanú.
+
+### Automatické nasadenie – jednorazové nastavenie
+
+Runner sa pripojí do Tailscale siete a cez SSH spustí na serveri `deploy.sh`.
+
+1. **Tailscale** (login.tailscale.com):
+   - *Access controls* – pridať tag a povoliť mu SSH na server:
+     ```json
+     "tagOwners": { "tag:ci": ["autogroup:admin"] },
+     ```
+     (ak máte vlastné `acls`/`grants`, pridajte pravidlo `tag:ci` → server, port 22)
+   - *Settings → OAuth clients* – nový klient so scope **Auth Keys (write)** a tagom `tag:ci`.
+2. **SSH kľúč** (na vlastnom počítači):
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C github-deploy-fyzio -f fyzio-deploy
+   ```
+   Na server do `~/.ssh/authorized_keys` pridať obsah `fyzio-deploy.pub` s obmedzením len na nasadenie:
+   ```
+   command="/home/ubuntu/docker/fyzio/deploy.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA... github-deploy-fyzio
+   ```
+3. **GitHub** → repo → *Settings → Secrets and variables → Actions*:
+
+   | Secret | Hodnota |
+   |---|---|
+   | `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` | z kroku 1 |
+   | `DEPLOY_SSH_KEY` | obsah súboru `fyzio-deploy` (súkromný kľúč) |
+   | `DEPLOY_HOST` | Tailscale IP servera (`tailscale ip -4` na serveri) |
+   | `DEPLOY_USER` | používateľ na serveri (napr. `ubuntu`) |
+   | `DEPLOY_KNOWN_HOSTS` | výstup `ssh-keyscan -t ed25519 <Tailscale IP>` |
+
+4. Overenie: *Actions → Deploy → Run workflow*.
 
 ### Záloha
 

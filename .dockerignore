@@ -4,3 +4,5 @@ data
 .git
 navrhy
 *.md
+.github
+deploy.sh
