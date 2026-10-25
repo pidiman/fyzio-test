@@ -10,7 +10,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
   deploy:
+    # nasadzuje sa len vtedy, keď prešli testy
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
