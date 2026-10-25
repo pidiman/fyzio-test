@@ -2,8 +2,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const dataDir = process.env.DATA_DIR || path.join(import.meta.dirname, 'data');
-mkdirSync(dataDir, { recursive: true });
+export const dataDir = process.env.DATA_DIR || path.join(import.meta.dirname, 'data');
+export const mediaDir = path.join(dataDir, 'media');
+mkdirSync(mediaDir, { recursive: true });
 
 export const db = new DatabaseSync(path.join(dataDir, 'fyzio.db'));
 
@@ -47,7 +48,52 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  -- procedúry v jednej miestnosti sa nesmú časovo prekrývať
+  CREATE TABLE IF NOT EXISTS rooms (
+    id   INTEGER PRIMARY KEY,
+    name TEXT    NOT NULL
+  );
+
+  -- členovia tímu: zobrazujú sa na webe a majú vlastný kalendár rezervácií
+  CREATE TABLE IF NOT EXISTS team_members (
+    id     INTEGER PRIMARY KEY,
+    name   TEXT    NOT NULL,
+    title  TEXT    NOT NULL DEFAULT '',
+    photo  TEXT    NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    sort   INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS procedure_members (
+    procedure_id INTEGER NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
+    member_id    INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+    PRIMARY KEY (procedure_id, member_id)
+  );
+
+  -- role: admin vidí všetko, solver len rezervácie svojho člena tímu
+  CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY,
+    username      TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash TEXT    NOT NULL,
+    role          TEXT    NOT NULL CHECK (role IN ('admin', 'solver')),
+    member_id     INTEGER REFERENCES team_members(id) ON DELETE SET NULL,
+    created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
 `);
+
+const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+if (!hasColumn('procedures', 'room_id')) {
+  db.exec('ALTER TABLE procedures ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL');
+}
+if (!hasColumn('bookings', 'room_id')) {
+  db.exec(`
+    ALTER TABLE bookings ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL;
+    ALTER TABLE bookings ADD COLUMN member_id INTEGER REFERENCES team_members(id) ON DELETE SET NULL;
+    ALTER TABLE bookings ADD COLUMN member_name TEXT NOT NULL DEFAULT '';
+    CREATE INDEX IF NOT EXISTS bookings_member ON bookings(member_id, date);
+  `);
+}
 
 // kľúče hodín: 0 = nedeľa … 6 = sobota, null = zatvorené
 const DEFAULT_SETTINGS = {
@@ -80,6 +126,31 @@ if (db.prepare('SELECT COUNT(*) AS n FROM procedures').get().n === 0) {
     ['Rázová vlna', 'Pätová ostroha, tenisový lakeť, kalcifikáty a chronické bolesti šliach.', 20, 35, 'bolt'],
     ['Detská fyzioterapia', 'Vojtova metóda, skolióza a správne držanie tela u detí.', 45, 40, 'child'],
   ].forEach((p, i) => insert.run(...p, i));
+}
+
+// Prvé spustenie s miestnosťami: doterajšia prevádzka mala jeden spoločný kalendár,
+// preto všetko dostane jednu miestnosť a správanie webu sa nezmení.
+if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+  db.exec('BEGIN');
+  try {
+    const roomId = Number(db.prepare("INSERT INTO rooms (name) VALUES ('Miestnosť 1')").run().lastInsertRowid);
+    db.prepare('UPDATE procedures SET room_id = ? WHERE room_id IS NULL').run(roomId);
+    db.prepare('UPDATE bookings SET room_id = ? WHERE room_id IS NULL').run(roomId);
+    if (db.prepare('SELECT COUNT(*) AS n FROM team_members').get().n === 0) {
+      const insert = db.prepare('INSERT INTO team_members (name, title, sort) VALUES (?, ?, ?)');
+      [
+        ['Mgr. Peter Novák', 'Vedúci fyzioterapeut'],
+        ['Mgr. Jana Kováčová', 'Športová fyzioterapia'],
+        ['Bc. Martin Horák', 'Manuálna terapia'],
+        ['Mgr. Lucia Malá', 'Detská fyzioterapia'],
+      ].forEach((m, i) => insert.run(...m, i));
+    }
+    db.exec('PRAGMA user_version = 1');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 export function getSettings() {

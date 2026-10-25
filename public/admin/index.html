@@ -15,7 +15,8 @@
   <form class="login-card" id="login-form">
     <div class="logo">FYZIO</div>
     <p>Prihlásenie do administrácie</p>
-    <input type="password" name="password" placeholder="Heslo" autocomplete="current-password" required autofocus>
+    <input name="username" placeholder="Prihlasovacie meno" autocomplete="username" required autofocus>
+    <input type="password" name="password" placeholder="Heslo" autocomplete="current-password" required>
     <button class="btn btn-primary">Prihlásiť sa</button>
     <p class="err" id="login-err"></p>
   </form>
@@ -24,7 +25,7 @@
 <div id="app" hidden>
   <header>
     <div class="wrap bar">
-      <div class="logo">FYZIO <small>admin</small></div>
+      <div class="logo">FYZIO <small id="who">admin</small></div>
       <div class="bar-actions">
         <a href="/" target="_blank" class="link">Zobraziť web ↗</a>
         <button class="btn btn-ghost btn-sm" id="logout">Odhlásiť</button>
@@ -32,8 +33,11 @@
     </div>
     <nav class="wrap tabs">
       <button data-tab="bookings" class="active">Rezervácie</button>
-      <button data-tab="procedures">Procedúry</button>
-      <button data-tab="settings">Nastavenia</button>
+      <button data-tab="procedures" data-admin>Procedúry</button>
+      <button data-tab="team" data-admin>Tím</button>
+      <button data-tab="users" data-admin>Používatelia</button>
+      <button data-tab="settings" data-admin>Nastavenia</button>
+      <button data-tab="account">Môj účet</button>
     </nav>
   </header>
 
@@ -55,6 +59,7 @@
           <option value="done">Dokončené</option>
           <option value="cancelled">Zrušené</option>
         </select>
+        <select id="f-member" data-admin></select>
         <button class="btn btn-ghost btn-sm" id="refresh">↻ Obnoviť</button>
       </div>
       <div class="list" id="bookings"></div>
@@ -62,6 +67,15 @@
 
     <!-- Procedúry -->
     <section id="tab-procedures" hidden>
+      <div class="panel">
+        <h3>Miestnosti</h3>
+        <p class="muted">Procedúry v rovnakej miestnosti sa nedajú objednať na rovnaký čas. Kliknutím na názov ho premenujete.</p>
+        <div class="chips" id="rooms"></div>
+        <form class="add-date" id="room-form" style="margin:12px 0 0">
+          <input name="name" placeholder="Nová miestnosť" maxlength="60" required>
+          <button class="btn btn-ghost btn-sm">Pridať</button>
+        </form>
+      </div>
       <div class="toolbar">
         <h2>Procedúry</h2>
         <button class="btn btn-primary btn-sm" id="proc-new">+ Nová procedúra</button>
@@ -73,15 +87,77 @@
         <label class="full">Popis<textarea name="description" rows="2" maxlength="500"></textarea></label>
         <label>Trvanie (min) *<input name="duration_min" type="number" min="5" max="480" step="5" required></label>
         <label>Cena (€) *<input name="price" type="number" min="0" step="0.5" required></label>
+        <label>Miestnosť *<select name="room_id" id="room-select" required></select></label>
         <label>Ikona<select name="icon" id="icon-select"></select></label>
         <label>Poradie<input name="sort" type="number" value="0"></label>
         <label class="check full"><input type="checkbox" name="active" checked> Zobraziť na webe (dá sa objednať)</label>
+        <p class="muted full">Terapeutov k procedúre priradíte v záložke Tím.</p>
         <div class="full form-actions">
           <button class="btn btn-primary">Uložiť</button>
           <button type="button" class="btn btn-ghost" id="proc-cancel">Zrušiť</button>
         </div>
       </form>
       <div class="list" id="procedures"></div>
+    </section>
+
+    <!-- Tím -->
+    <section id="tab-team" hidden>
+      <div class="toolbar">
+        <h2>Tím</h2>
+        <button class="btn btn-primary btn-sm" id="member-new">+ Nový člen</button>
+      </div>
+      <form class="panel form-grid" id="member-form" hidden>
+        <h3 class="full" id="member-form-title">Nový člen tímu</h3>
+        <input type="hidden" name="id">
+        <div class="photo-edit full">
+          <div class="photo" id="photo-preview"></div>
+          <div class="photo-actions">
+            <label class="btn btn-ghost btn-sm">Nahrať fotku<input type="file" accept="image/*" id="photo-input" hidden></label>
+            <button type="button" class="btn btn-danger btn-sm" id="photo-remove">Odstrániť fotku</button>
+            <p class="muted">Fotka sa oreže na výšku (3 : 4).</p>
+          </div>
+        </div>
+        <label>Meno a titul *<input name="name" required maxlength="100"></label>
+        <label>Pozícia<input name="title" maxlength="100" placeholder="napr. Športová fyzioterapia"></label>
+        <label>Poradie<input name="sort" type="number" value="0"></label>
+        <label class="check"><input type="checkbox" name="active" checked> Aktívny – na webe a prijíma rezervácie</label>
+        <fieldset class="full">
+          <legend>Procedúry, ktoré robí</legend>
+          <div class="checks" id="member-procs"></div>
+        </fieldset>
+        <div class="full form-actions">
+          <button class="btn btn-primary">Uložiť</button>
+          <button type="button" class="btn btn-ghost" id="member-cancel">Zrušiť</button>
+        </div>
+      </form>
+      <div class="list" id="team"></div>
+    </section>
+
+    <!-- Používatelia -->
+    <section id="tab-users" hidden>
+      <div class="toolbar">
+        <h2>Používatelia</h2>
+        <button class="btn btn-primary btn-sm" id="user-new">+ Nový používateľ</button>
+      </div>
+      <p class="muted"><b>Admin</b> vidí a spravuje všetko. <b>Solver</b> je člen tímu – vidí len svoje rezervácie a môže ich potvrdiť, dokončiť alebo zrušiť.</p>
+      <form class="panel form-grid" id="user-form" hidden autocomplete="off">
+        <h3 class="full" id="user-form-title">Nový používateľ</h3>
+        <input type="hidden" name="id">
+        <label>Prihlasovacie meno *<input name="username" required minlength="3" maxlength="32" pattern="[a-zA-Z0-9._\-]+" autocomplete="off"></label>
+        <label>Heslo <span id="pw-hint">*</span><input name="password" type="password" minlength="8" autocomplete="new-password"></label>
+        <label>Rola
+          <select name="role">
+            <option value="solver">Solver (člen tímu)</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label>Člen tímu<select name="member_id" id="user-member"></select></label>
+        <div class="full form-actions">
+          <button class="btn btn-primary">Uložiť</button>
+          <button type="button" class="btn btn-ghost" id="user-cancel">Zrušiť</button>
+        </div>
+      </form>
+      <div class="list" id="users"></div>
     </section>
 
     <!-- Nastavenia -->
@@ -118,6 +194,17 @@
         <p class="muted" id="mail-status">Načítavam…</p>
         <button type="button" class="btn btn-ghost btn-sm" id="mail-test">Poslať testovací e-mail</button>
       </div>
+    </section>
+
+    <!-- Môj účet -->
+    <section id="tab-account" hidden>
+      <form class="panel form-grid" id="password-form">
+        <h3 class="full">Zmena hesla</h3>
+        <label class="full">Súčasné heslo<input name="current" type="password" required autocomplete="current-password"></label>
+        <label>Nové heslo<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+        <label>Nové heslo znova<input name="password2" type="password" required minlength="8" autocomplete="new-password"></label>
+        <div class="full form-actions"><button class="btn btn-primary">Zmeniť heslo</button></div>
+      </form>
     </section>
   </main>
 </div>

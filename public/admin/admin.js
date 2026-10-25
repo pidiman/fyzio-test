@@ -5,6 +5,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const DAYS = ['Nedeľa', 'Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota'];
 const DAYS_SHORT = ['Ne', 'Po', 'Ut', 'St', 'Št', 'Pi', 'So'];
 const STATUS = { new: 'Nová', confirmed: 'Potvrdená', done: 'Dokončená', cancelled: 'Zrušená' };
+const ROLE = { admin: 'Admin', solver: 'Solver' };
+const AVATAR = '<svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg>';
 
 const eur = (n) => n.toLocaleString('sk-SK', { style: 'currency', currency: 'EUR', minimumFractionDigits: n % 1 ? 2 : 0 });
 const fmtDate = (d) => {
@@ -44,24 +46,33 @@ const guard = (fn) => async (...args) => {
 
 // ---------- prihlásenie ----------
 
+let me = null;
+const isAdmin = () => me?.role === 'admin';
+
 function showLogin() {
+  me = null;
   $('#app').hidden = true;
   $('#login').hidden = false;
 }
 
-function showApp() {
+async function showApp() {
+  me = await api('/api/admin/me');
+  $('#who').textContent = `${me.member_name || me.username} · ${ROLE[me.role]}`;
+  // solver nevidí záložky a filtre určené len adminovi
+  document.querySelectorAll('[data-admin]').forEach((el) => { el.hidden = !isAdmin(); });
   $('#login').hidden = true;
   $('#app').hidden = false;
-  loadBookings();
+  openTab('bookings');
 }
 
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#login-err').textContent = '';
   try {
-    await api('/api/admin/login', { method: 'POST', body: { password: e.target.password.value } });
+    const f = e.target.elements;
+    await api('/api/admin/login', { method: 'POST', body: { username: f.username.value, password: f.password.value } });
     e.target.reset();
-    showApp();
+    await showApp();
   } catch (err) {
     $('#login-err').textContent = err.message;
   }
@@ -74,18 +85,40 @@ $('#logout').addEventListener('click', guard(async () => {
 
 // ---------- záložky ----------
 
-const loaders = { bookings: () => loadBookings(), procedures: () => loadProcedures(), settings: () => loadSettings() };
+const loaders = {
+  bookings: () => loadBookings(),
+  procedures: () => loadProcedures(),
+  team: () => loadTeam(),
+  users: () => loadUsers(),
+  settings: () => loadSettings(),
+  account: () => {},
+};
 
-document.querySelectorAll('[data-tab]').forEach((btn) => btn.addEventListener('click', () => {
-  document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b === btn));
-  for (const name of Object.keys(loaders)) $(`#tab-${name}`).hidden = name !== btn.dataset.tab;
-  loaders[btn.dataset.tab]();
-}));
+function openTab(name) {
+  document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+  for (const tab of Object.keys(loaders)) $(`#tab-${tab}`).hidden = tab !== name;
+  loaders[name]();
+}
+
+document.querySelectorAll('[data-tab]').forEach((btn) => btn.addEventListener('click', () => openTab(btn.dataset.tab)));
 
 // ---------- rezervácie ----------
 
+let teamOptions = [];
+
+const memberSelect = (selected) => `<option value="">— nepriradené —</option>` +
+  teamOptions.map((m) => `<option value="${m.id}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}</option>`).join('');
+
 const loadBookings = guard(async () => {
+  if (isAdmin()) {
+    teamOptions = await api('/api/admin/team');
+    const current = $('#f-member').value;
+    $('#f-member').innerHTML = '<option value="">Všetci terapeuti</option><option value="none">Nepriradené</option>' +
+      teamOptions.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    $('#f-member').value = current;
+  }
   const params = new URLSearchParams({ range: $('#f-range').value, status: $('#f-status').value });
+  if (isAdmin() && $('#f-member').value) params.set('member', $('#f-member').value);
   const [stats, bookings] = await Promise.all([api('/api/admin/stats'), api(`/api/admin/bookings?${params}`)]);
 
   $('#stats').innerHTML = `
@@ -98,8 +131,11 @@ const loadBookings = guard(async () => {
       <div class="bk-when"><b>${fmtDate(b.date)}</b><span>${b.time} – ${b.end_time}</span></div>
       <div class="bk-main">
         <h4>${esc(b.name)} <span class="badge b-${b.status}">${STATUS[b.status]}</span></h4>
-        <p>${esc(b.procedure_name)} · ${eur(b.price)}</p>
+        <p>${esc(b.procedure_name)} · ${eur(b.price)}${b.room_name ? ` · ${esc(b.room_name)}` : ''}</p>
         <p><a href="tel:${esc(b.phone.replace(/\s/g, ''))}">${esc(b.phone)}</a>${b.email ? ` · <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ''}</p>
+        ${isAdmin()
+          ? `<label class="assign">Terapeut <select data-assign="${b.id}">${memberSelect(b.member_id)}</select></label>`
+          : ''}
         ${b.note ? `<p class="note">${esc(b.note)}</p>` : ''}
       </div>
       <div class="bk-actions">
@@ -107,13 +143,14 @@ const loadBookings = guard(async () => {
         ${b.status === 'confirmed' ? `<button class="btn btn-ghost btn-sm" data-status="done" data-id="${b.id}">Dokončená</button>` : ''}
         ${b.status !== 'cancelled' && b.status !== 'done' ? `<button class="btn btn-ghost btn-sm" data-status="cancelled" data-id="${b.id}">Zrušiť</button>` : ''}
         ${b.status === 'cancelled' ? `<button class="btn btn-ghost btn-sm" data-status="new" data-id="${b.id}">Obnoviť</button>` : ''}
-        <button class="btn btn-danger btn-sm" data-delete-booking="${b.id}">Vymazať</button>
+        ${isAdmin() ? `<button class="btn btn-danger btn-sm" data-delete-booking="${b.id}">Vymazať</button>` : ''}
       </div>
     </article>`).join('') || '<div class="empty">Žiadne rezervácie pre zvolený filter.</div>';
 });
 
 $('#f-range').addEventListener('change', loadBookings);
 $('#f-status').addEventListener('change', loadBookings);
+$('#f-member').addEventListener('change', loadBookings);
 $('#refresh').addEventListener('click', loadBookings);
 
 $('#bookings').addEventListener('click', guard(async (e) => {
@@ -131,19 +168,40 @@ $('#bookings').addEventListener('click', guard(async (e) => {
   }
 }));
 
-// ---------- procedúry ----------
+$('#bookings').addEventListener('change', async (e) => {
+  const sel = e.target.closest('[data-assign]');
+  if (!sel) return;
+  try {
+    await api(`/api/admin/bookings/${sel.dataset.assign}`, { method: 'PATCH', body: { member_id: sel.value ? Number(sel.value) : null } });
+    toast('Terapeut zmenený');
+  } catch (err) {
+    toast(err.message, true);
+  }
+  loadBookings();
+});
+
+// ---------- procedúry a miestnosti ----------
 
 let procedures = [];
+let rooms = [];
 const procForm = $('#proc-form');
 
 $('#icon-select').innerHTML = Object.entries(ICON_LABELS).map(([k, label]) => `<option value="${k}">${label}</option>`).join('');
 
 const loadProcedures = guard(async () => {
-  procedures = await api('/api/admin/procedures');
+  [procedures, rooms] = await Promise.all([api('/api/admin/procedures'), api('/api/admin/rooms')]);
+  $('#rooms').innerHTML = rooms.map((r) => `
+    <span class="chip"><button type="button" class="chip-name" data-rename-room="${r.id}">${esc(r.name)}</button>
+      <small>${r.procedures} proc.</small><button type="button" data-delete-room="${r.id}" aria-label="Vymazať">×</button></span>`
+  ).join('') || '<span class="muted">Žiadne miestnosti – pridajte aspoň jednu.</span>';
+  $('#room-select').innerHTML = rooms.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+
   $('#procedures').innerHTML = procedures.map((p) => `
     <div class="pr ${p.active ? '' : 'off'}">
       <div class="ic">${icon(p.icon, 22)}</div>
-      <div><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="badge b-done">skrytá</span>'}<p>${esc(p.description)}</p></div>
+      <div><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="badge b-done">skrytá</span>'}<p>${esc(p.description)}</p>
+        <p class="tags"><span>${esc(p.room_name || 'bez miestnosti')}</span>${
+          p.members.length ? p.members.map((m) => `<span>${esc(m.name)}</span>`).join('') : '<span class="warn">bez terapeuta</span>'}</p></div>
       <div class="price">${eur(p.price)}<small>${p.duration_min} min</small></div>
       <div class="bk-actions pr-actions">
         <button class="btn btn-ghost btn-sm" data-edit="${p.id}">Upraviť</button>
@@ -151,6 +209,32 @@ const loadProcedures = guard(async () => {
       </div>
     </div>`).join('') || '<div class="empty">Zatiaľ žiadne procedúry.</div>';
 });
+
+$('#room-form').addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  await api('/api/admin/rooms', { method: 'POST', body: { name: e.target.elements.name.value } });
+  e.target.reset();
+  toast('Miestnosť pridaná');
+  loadProcedures();
+}));
+
+$('#rooms').addEventListener('click', guard(async (e) => {
+  const rename = e.target.closest('[data-rename-room]');
+  if (rename) {
+    const room = rooms.find((r) => r.id === Number(rename.dataset.renameRoom));
+    const name = prompt('Nový názov miestnosti:', room.name);
+    if (!name || name === room.name) return;
+    await api(`/api/admin/rooms/${room.id}`, { method: 'PUT', body: { name } });
+    toast('Miestnosť premenovaná');
+    return loadProcedures();
+  }
+  const del = e.target.closest('[data-delete-room]');
+  if (del && confirm('Vymazať miestnosť?')) {
+    await api(`/api/admin/rooms/${del.dataset.deleteRoom}`, { method: 'DELETE' });
+    toast('Miestnosť vymazaná');
+    loadProcedures();
+  }
+}));
 
 function openProcForm(p) {
   procForm.reset();
@@ -161,6 +245,7 @@ function openProcForm(p) {
   f.description.value = p?.description ?? '';
   f.duration_min.value = p?.duration_min ?? 30;
   f.price.value = p?.price ?? '';
+  f.room_id.value = p?.room_id ?? rooms[0]?.id ?? '';
   f.icon.value = p?.icon ?? 'hand';
   f.sort.value = p?.sort ?? procedures.length;
   f.active.checked = p ? !!p.active : true;
@@ -177,7 +262,7 @@ procForm.addEventListener('submit', guard(async (e) => {
   const f = procForm.elements;
   const body = {
     name: f.name.value, description: f.description.value, duration_min: f.duration_min.value,
-    price: f.price.value, icon: f.icon.value, sort: f.sort.value, active: f.active.checked,
+    price: f.price.value, room_id: f.room_id.value, icon: f.icon.value, sort: f.sort.value, active: f.active.checked,
   };
   const id = f.id.value;
   await api(id ? `/api/admin/procedures/${id}` : '/api/admin/procedures', { method: id ? 'PUT' : 'POST', body });
@@ -196,6 +281,189 @@ $('#procedures').addEventListener('click', guard(async (e) => {
     toast('Procedúra vymazaná');
     loadProcedures();
   }
+}));
+
+// ---------- tím ----------
+
+let team = [];
+// photo: undefined = bez zmeny, null = odstrániť, string = nová fotka (data URL)
+let photoChange;
+const memberForm = $('#member-form');
+
+const loadTeam = guard(async () => {
+  [team, procedures] = await Promise.all([api('/api/admin/team'), api('/api/admin/procedures')]);
+  const procName = (id) => procedures.find((p) => p.id === id)?.name;
+  $('#team').innerHTML = team.map((m) => `
+    <div class="pr tm ${m.active ? '' : 'off'}">
+      <div class="photo sm">${m.photo ? `<img src="${esc(m.photo)}" alt="">` : AVATAR}</div>
+      <div><b>${esc(m.name)}</b>${m.active ? '' : ' <span class="badge b-done">neaktívny</span>'}<p>${esc(m.title)}</p>
+        <p class="tags">${m.procedures.map((id) => `<span>${esc(procName(id))}</span>`).join('') || '<span class="warn">bez procedúr</span>'}
+        ${m.logins.map((u) => `<span class="login-tag">👤 ${esc(u)}</span>`).join('')}</p></div>
+      <div class="bk-actions pr-actions">
+        <button class="btn btn-ghost btn-sm" data-edit-member="${m.id}">Upraviť</button>
+        <button class="btn btn-danger btn-sm" data-delete-member="${m.id}">Vymazať</button>
+      </div>
+    </div>`).join('') || '<div class="empty">Zatiaľ žiadni členovia tímu.</div>';
+});
+
+function renderPhoto(src) {
+  $('#photo-preview').innerHTML = src ? `<img src="${esc(src)}" alt="">` : AVATAR;
+  $('#photo-remove').hidden = !src;
+}
+
+function openMemberForm(m) {
+  memberForm.reset();
+  photoChange = undefined;
+  $('#member-form-title').textContent = m ? 'Upraviť člena tímu' : 'Nový člen tímu';
+  const f = memberForm.elements;
+  f.id.value = m?.id ?? '';
+  f.name.value = m?.name ?? '';
+  f.title.value = m?.title ?? '';
+  f.sort.value = m?.sort ?? team.length;
+  f.active.checked = m ? !!m.active : true;
+  $('#member-procs').innerHTML = procedures.map((p) => `
+    <label class="check"><input type="checkbox" value="${p.id}" ${m?.procedures.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`
+  ).join('') || '<span class="muted">Najprv vytvorte procedúry.</span>';
+  renderPhoto(m?.photo);
+  memberForm.hidden = false;
+  memberForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  f.name.focus();
+}
+
+// fotka sa v prehliadači oreže na 3:4 a zmenší, na server ide malý JPEG
+function resizePhoto(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const W = 600, H = 800;
+      const scale = Math.max(W / img.width, H / img.height);
+      const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
+      canvas.getContext('2d').drawImage(img, (W - img.width * scale) / 2, (H - img.height * scale) / 2, img.width * scale, img.height * scale);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => reject(new Error('Súbor sa nepodarilo načítať ako obrázok.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+$('#photo-input').addEventListener('change', guard(async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  photoChange = await resizePhoto(file);
+  renderPhoto(photoChange);
+}));
+
+$('#photo-remove').addEventListener('click', () => {
+  photoChange = null;
+  renderPhoto('');
+});
+
+$('#member-new').addEventListener('click', () => openMemberForm(null));
+$('#member-cancel').addEventListener('click', () => { memberForm.hidden = true; });
+
+memberForm.addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const f = memberForm.elements;
+  const body = {
+    name: f.name.value, title: f.title.value, sort: f.sort.value, active: f.active.checked,
+    procedures: [...$('#member-procs').querySelectorAll('input:checked')].map((i) => Number(i.value)),
+  };
+  if (photoChange !== undefined) body.photo = photoChange;
+  const id = f.id.value;
+  await api(id ? `/api/admin/team/${id}` : '/api/admin/team', { method: id ? 'PUT' : 'POST', body });
+  memberForm.hidden = true;
+  toast('Člen tímu uložený');
+  loadTeam();
+}));
+
+$('#team').addEventListener('click', guard(async (e) => {
+  const edit = e.target.closest('[data-edit-member]');
+  if (edit) return openMemberForm(team.find((m) => m.id === Number(edit.dataset.editMember)));
+
+  const del = e.target.closest('[data-delete-member]');
+  if (del && confirm('Vymazať člena tímu? Jeho rezervácie ostanú, ale budú nepriradené.')) {
+    await api(`/api/admin/team/${del.dataset.deleteMember}`, { method: 'DELETE' });
+    toast('Člen tímu vymazaný');
+    loadTeam();
+  }
+}));
+
+// ---------- používatelia ----------
+
+let users = [];
+const userForm = $('#user-form');
+
+const loadUsers = guard(async () => {
+  [users, team] = await Promise.all([api('/api/admin/users'), api('/api/admin/team')]);
+  $('#user-member').innerHTML = '<option value="">— žiadny —</option>' +
+    team.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+  $('#users').innerHTML = users.map((u) => `
+    <div class="pr us">
+      <div class="ic">${u.role === 'admin' ? '★' : '👤'}</div>
+      <div><b>${esc(u.username)}</b> <span class="badge ${u.role === 'admin' ? 'b-confirmed' : 'b-done'}">${ROLE[u.role]}</span>
+        <p>${u.member_name ? esc(u.member_name) : u.role === 'solver' ? '<span class="warn">bez člena tímu</span>' : ''}${u.id === me.id ? ' · to ste vy' : ''}</p></div>
+      <div class="bk-actions pr-actions">
+        <button class="btn btn-ghost btn-sm" data-edit-user="${u.id}">Upraviť</button>
+        ${u.id === me.id ? '' : `<button class="btn btn-danger btn-sm" data-delete-user="${u.id}">Vymazať</button>`}
+      </div>
+    </div>`).join('');
+});
+
+function openUserForm(u) {
+  userForm.reset();
+  $('#user-form-title').textContent = u ? `Upraviť používateľa ${u.username}` : 'Nový používateľ';
+  const f = userForm.elements;
+  f.id.value = u?.id ?? '';
+  f.username.value = u?.username ?? '';
+  f.role.value = u?.role ?? 'solver';
+  f.member_id.value = u?.member_id ?? '';
+  f.password.required = !u;
+  f.password.placeholder = u ? 'nechajte prázdne = bez zmeny' : 'aspoň 8 znakov';
+  $('#pw-hint').textContent = u ? '' : '*';
+  userForm.hidden = false;
+  userForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  f.username.focus();
+}
+
+$('#user-new').addEventListener('click', () => openUserForm(null));
+$('#user-cancel').addEventListener('click', () => { userForm.hidden = true; });
+
+userForm.addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const f = userForm.elements;
+  const body = { username: f.username.value, role: f.role.value, member_id: f.member_id.value || null, password: f.password.value };
+  const id = f.id.value;
+  await api(id ? `/api/admin/users/${id}` : '/api/admin/users', { method: id ? 'PUT' : 'POST', body });
+  userForm.hidden = true;
+  toast('Používateľ uložený');
+  // zmena vlastnej roly sa prejaví hneď
+  if (Number(id) === me.id) return showApp();
+  loadUsers();
+}));
+
+$('#users').addEventListener('click', guard(async (e) => {
+  const edit = e.target.closest('[data-edit-user]');
+  if (edit) return openUserForm(users.find((u) => u.id === Number(edit.dataset.editUser)));
+
+  const del = e.target.closest('[data-delete-user]');
+  if (del && confirm('Vymazať používateľa? Prihlásenie mu prestane fungovať.')) {
+    await api(`/api/admin/users/${del.dataset.deleteUser}`, { method: 'DELETE' });
+    toast('Používateľ vymazaný');
+    loadUsers();
+  }
+}));
+
+// ---------- môj účet ----------
+
+$('#password-form').addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const f = e.target.elements;
+  if (f.password.value !== f.password2.value) throw new Error('Nové heslá sa nezhodujú.');
+  await api('/api/admin/me/password', { method: 'PUT', body: { current: f.current.value, password: f.password.value } });
+  e.target.reset();
+  toast('Heslo zmenené');
 }));
 
 // ---------- nastavenia ----------

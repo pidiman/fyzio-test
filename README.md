@@ -3,7 +3,16 @@
 Node.js (Express) + SQLite (vstavané `node:sqlite`, žiadny databázový server).
 
 - `/` – verejný web, objednávanie na procedúry (výber procedúry → deň → voľný čas → údaje)
-- `/admin` – administrácia: rezervácie (potvrdiť / dokončiť / zrušiť / vymazať), procedúry a cenník, otváracie hodiny, zatvorené dni
+- `/admin` – administrácia: rezervácie (potvrdiť / dokončiť / zrušiť / vymazať / preradiť terapeutovi), procedúry a miestnosti,
+  tím (zobrazuje sa na webe), používatelia, otváracie hodiny, zatvorené dni
+
+### Roly
+
+- **Admin** – vidí všetky rezervácie a spravuje procedúry, miestnosti, tím, používateľov a nastavenia.
+- **Solver** – účet napojený na člena tímu; vidí len svoje rezervácie a môže ich potvrdiť, dokončiť alebo zrušiť.
+
+Každá procedúra má miestnosť a terapeutov (priradia sa v záložke Tím). Termín je voľný, ak je voľná miestnosť
+a aspoň jeden z terapeutov procedúry; klient si na webe môže terapeuta vybrať, inak sa pridelí automaticky.
 
 ## Lokálne spustenie
 
@@ -14,7 +23,8 @@ npm run dev               # http://localhost:3000
 ```
 
 Vyžaduje Node.js 22.13 alebo novší. Databáza sa vytvorí v `data/fyzio.db` a pri prvom spustení sa naplní ukážkovými procedúrami.
-Ak `ADMIN_PASSWORD` nie je nastavené, server pri štarte vypíše dočasné heslo.
+Pri prvom spustení sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (ak nie je nastavené, server vypíše dočasné heslo).
+Ďalšie účty sa zakladajú v administrácii, `ADMIN_PASSWORD` sa potom už nepoužíva – heslo zmeníte v záložke *Môj účet*.
 
 ## E-maily
 
@@ -170,6 +180,7 @@ docker run --rm -v fyzio_fyzio-data:/data -v ~/backups:/b alpine \
 
 ## Poznámky
 
-- Termíny sa nesmú prekrývať: v jednom čase je možná jedna rezervácia (jeden terapeut).
+- Rezervácie sa nesmú prekrývať v rovnakej miestnosti ani u rovnakého terapeuta.
+- Fotky tímu sú v `data/media` (v Dockeri vo volume `fyzio-data`, zálohujú sa spolu s databázou).
 - Prihlásenia do adminu sa držia v pamäti, po reštarte kontajnera sa treba prihlásiť znova.
 - Pôvodné návrhy dizajnu sú v `navrhy/`.

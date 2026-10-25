@@ -18,7 +18,7 @@
       <li><a href="#sluzby">Procedúry</a></li>
       <li><a href="#preco">Prístup</a></li>
       <li><a href="#priestor">Priestor</a></li>
-      <li><a href="#tim">Tím</a></li>
+      <li id="menu-tim" hidden><a href="#tim">Tím</a></li>
       <li><a href="#kontakt">Kontakt</a></li>
     </ul>
     <a href="#rezervacia" class="btn btn-primary">Objednať sa</a>
@@ -91,15 +91,10 @@
   </div>
 </section>
 
-<section id="tim">
+<section id="tim" hidden>
   <div class="container">
     <div class="sec-head"><span class="eyebrow">Náš tím</span><h2>Ľudia, ktorým môžete dôverovať</h2></div>
-    <div class="team">
-      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg></div><h4>Mgr. Peter Novák</h4><span>Vedúci fyzioterapeut</span></div>
-      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg></div><h4>Mgr. Jana Kováčová</h4><span>Športová fyzioterapia</span></div>
-      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg></div><h4>Bc. Martin Horák</h4><span>Manuálna terapia</span></div>
-      <div class="member"><div class="avatar"><svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg></div><h4>Mgr. Lucia Malá</h4><span>Detská fyzioterapia</span></div>
-    </div>
+    <div class="team" id="team"></div>
   </div>
 </section>
 
@@ -118,15 +113,19 @@
           <div class="proc-list" id="proc-list"></div>
         </div>
         <div class="step">
-          <div class="step-h"><span>02</span><h3>Deň</h3></div>
+          <div class="step-h"><span>02</span><h3>Terapeut</h3></div>
+          <div class="members" id="members"><p class="hint">Najprv vyberte procedúru.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-h"><span>03</span><h3>Deň</h3></div>
           <div class="days" id="days"></div>
         </div>
         <div class="step">
-          <div class="step-h"><span>03</span><h3>Čas</h3></div>
+          <div class="step-h"><span>04</span><h3>Čas</h3></div>
           <div class="slots" id="slots"><p class="hint">Najprv vyberte procedúru a deň.</p></div>
         </div>
         <div class="step">
-          <div class="step-h"><span>04</span><h3>Vaše údaje</h3></div>
+          <div class="step-h"><span>05</span><h3>Vaše údaje</h3></div>
           <form class="fields" id="contact" novalidate>
             <label>Meno a priezvisko *<input name="name" required minlength="3" autocomplete="name"></label>
             <label>Telefón *<input name="phone" type="tel" required pattern="\+?[\d\s\/\-]{6,}" autocomplete="tel" placeholder="+421 9xx xxx xxx"></label>

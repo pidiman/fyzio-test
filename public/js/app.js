@@ -22,7 +22,7 @@ async function api(url, opts) {
   return data;
 }
 
-const state = { procedures: [], info: null, proc: null, date: null, time: null };
+const state = { procedures: [], team: [], info: null, proc: null, member: null, date: null, time: null };
 
 function renderServices() {
   $('#services').innerHTML = state.procedures.map((p) => `
@@ -35,6 +35,32 @@ function renderServices() {
         <button data-book="${p.id}">Objednať →</button>
       </div>
     </div>`).join('') || '<p class="loading">Momentálne nie sú dostupné žiadne procedúry.</p>';
+}
+
+const AVATAR = '<svg viewBox="0 0 100 100"><circle cx="50" cy="40" r="18"/><path d="M16 100c0-22 15-36 34-36s34 14 34 36z"/></svg>';
+
+function renderTeam() {
+  $('#tim').hidden = $('#menu-tim').hidden = !state.team.length;
+  $('#team').innerHTML = state.team.map((m) => `
+    <div class="member">
+      <div class="avatar">${m.photo ? `<img src="${esc(m.photo)}" alt="${esc(m.name)}" loading="lazy">` : AVATAR}</div>
+      <h4>${esc(m.name)}</h4><span>${esc(m.title)}</span>
+    </div>`).join('');
+}
+
+// terapeuti, ktorí robia vybranú procedúru; „Ktokoľvek“ nechá výber na serveri
+function renderMembers() {
+  if (!state.proc) {
+    $('#members').innerHTML = '<p class="hint">Najprv vyberte procedúru.</p>';
+    return;
+  }
+  const members = state.team.filter((m) => m.procedures.includes(state.proc.id));
+  if (!members.some((m) => m.id === state.member?.id)) state.member = null;
+  $('#members').innerHTML = [{ id: 0, name: 'Ktokoľvek', title: 'prvý voľný termín' }, ...members].map((m) => `
+    <button class="person ${(state.member?.id ?? 0) === m.id ? 'sel' : ''}" data-member="${m.id}">
+      <span class="ph ${m.id ? '' : 'any'}">${m.photo ? `<img src="${esc(m.photo)}" alt="">` : m.id ? AVATAR : '✦'}</span>
+      <span><b>${esc(m.name)}</b><small>${esc(m.title)}</small></span>
+    </button>`).join('');
 }
 
 function renderProcList() {
@@ -69,7 +95,8 @@ async function loadSlots() {
   }
   box.innerHTML = '<p class="hint">Hľadám voľné termíny…</p>';
   try {
-    const slots = await api(`/api/slots?date=${state.date}&procedure=${state.proc.id}`);
+    const member = state.member ? `&member=${state.member.id}` : '';
+    const slots = await api(`/api/slots?date=${state.date}&procedure=${state.proc.id}${member}`);
     if (!slots.includes(state.time)) state.time = null;
     box.innerHTML = slots.length
       ? slots.map((t) => `<button class="slot ${state.time === t ? 'sel' : ''}" data-time="${t}">${t}</button>`).join('')
@@ -84,6 +111,7 @@ function updateSummary() {
   const p = state.proc;
   $('#summary').innerHTML = `
     <dt>Procedúra</dt><dd>${p ? esc(p.name) : '—'}</dd>
+    <dt>Terapeut</dt><dd>${state.member ? esc(state.member.name) : 'ktokoľvek'}</dd>
     <dt>Deň</dt><dd>${state.date ? fmtDate(state.date) : '—'}</dd>
     <dt>Čas</dt><dd>${state.time || '—'}</dd>
     <dt>Trvanie</dt><dd>${p ? p.duration_min + ' min' : '—'}</dd>
@@ -94,6 +122,7 @@ function updateSummary() {
 function selectProc(id) {
   state.proc = state.procedures.find((p) => p.id === id) || null;
   renderProcList();
+  renderMembers();
   loadSlots();
 }
 
@@ -114,6 +143,13 @@ document.addEventListener('click', (e) => {
   }
   const proc = e.target.closest('[data-proc]');
   if (proc) return selectProc(Number(proc.dataset.proc));
+
+  const member = e.target.closest('[data-member]');
+  if (member) {
+    state.member = state.team.find((m) => m.id === Number(member.dataset.member)) || null;
+    renderMembers();
+    return loadSlots();
+  }
 
   const day = e.target.closest('[data-date]');
   if (day) {
@@ -138,16 +174,17 @@ $('#submit').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'Odosielam…';
   try {
-    await api('/api/bookings', {
+    const booking = await api('/api/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        procedure_id: state.proc.id, date: state.date, time: state.time,
+        procedure_id: state.proc.id, member_id: state.member?.id, date: state.date, time: state.time,
         ...Object.fromEntries(new FormData(form)),
       }),
     });
     $('#done-text').textContent =
-      `${state.proc.name}, ${fmtDate(state.date)} o ${state.time}. Čoskoro sa vám ozveme s potvrdením termínu.`;
+      `${state.proc.name}${booking.member_name ? ` (${booking.member_name})` : ''}, ${fmtDate(state.date)} o ${state.time}. ` +
+      'Čoskoro sa vám ozveme s potvrdením termínu.';
     $('#done').showModal();
     form.reset();
   } catch (err) {
@@ -175,8 +212,9 @@ menu.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => {
 }));
 
 try {
-  [state.procedures, state.info] = await Promise.all([api('/api/procedures'), api('/api/info')]);
+  [state.procedures, state.info, state.team] = await Promise.all([api('/api/procedures'), api('/api/info'), api('/api/team')]);
   renderServices();
+  renderTeam();
   renderProcList();
   renderDays();
   renderHours();

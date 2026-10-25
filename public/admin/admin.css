@@ -95,6 +95,32 @@ label.check input{width:18px;height:18px;accent-color:var(--br-600)}
 .pr .price{font-weight:700;color:var(--br-900);text-align:right;white-space:nowrap}
 .pr .price small{display:block;font-weight:400;color:var(--muted)}
 
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.tags span{background:var(--br-50);border:1px solid var(--br-100);border-radius:999px;padding:1px 10px;font-size:.78rem;color:var(--br-700)}
+.tags .warn,.warn{color:#9a6714}
+.tags .warn{background:#fbefd9;border-color:#f3dfb8}
+.tags .login-tag{background:#e3efe2;border-color:#cfe2cd;color:#3d6b3c}
+.assign{display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:500;color:var(--muted);margin-top:6px}
+.assign select{padding:4px 8px;border-radius:8px;font-size:.88rem}
+
+/* Team & users */
+.pr.tm{grid-template-columns:60px 1fr auto}
+.pr.us{grid-template-columns:44px 1fr auto}
+.photo{width:120px;aspect-ratio:3/4;border-radius:999px 999px 6px 6px;background:linear-gradient(180deg,var(--br-100),#c5b9a8);display:grid;place-items:end center;overflow:hidden;flex:none}
+.photo.sm{width:60px}
+.photo svg{width:76%;fill:rgba(255,255,255,.8)}
+.photo img{width:100%;height:100%;object-fit:cover}
+.photo-edit{display:flex;gap:20px;align-items:center}
+.photo-actions{display:grid;gap:8px;justify-items:start}
+.photo-actions .muted{margin:0}
+fieldset{border:1px solid var(--br-100);border-radius:12px;padding:12px 16px}
+legend{font-size:.88rem;font-weight:600;color:var(--br-800);padding:0 6px}
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.checks label{font-weight:400}
+.chip-name{background:none!important;border:0;width:auto!important;height:auto!important;border-radius:0!important;font:inherit;color:var(--br-900)!important;cursor:pointer;padding:0}
+.chip-name:hover{text-decoration:underline}
+.chip small{color:var(--muted)}
+
 /* Settings */
 .hours{display:grid;gap:8px}
 .hrow{display:grid;grid-template-columns:120px auto 1fr;gap:12px;align-items:center}
@@ -122,6 +148,8 @@ label.check input{width:18px;height:18px;accent-color:var(--br-600)}
   .pr{grid-template-columns:44px 1fr;row-gap:10px}
   .pr .price{text-align:left;grid-column:2}
   .pr .pr-actions{grid-column:1/-1}
+  .pr.tm{grid-template-columns:60px 1fr}
+  .photo-edit{align-items:flex-start}
   .hrow{grid-template-columns:1fr auto;row-gap:6px}
   .hrow .times{grid-column:1/-1}
   .hrow .times input{flex:1;width:auto}

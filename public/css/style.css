@@ -92,6 +92,7 @@ section{padding:104px 0}
 .member{text-align:center}
 .avatar{aspect-ratio:3/4;border-radius:999px 999px 4px 4px;background:linear-gradient(180deg,var(--linen),var(--taupe));margin-bottom:18px;display:grid;place-items:end center;overflow:hidden}
 .avatar svg{width:72%;fill:rgba(255,255,255,.75)}
+.avatar img{width:100%;height:100%;object-fit:cover}
 .member h4{font-size:1.15rem}
 .member span{color:var(--muted);font-size:.8rem;letter-spacing:.14em;text-transform:uppercase}
 
@@ -110,6 +111,16 @@ section{padding:104px 0}
 .proc .pi{color:var(--taupe-d);flex:none}
 .proc b{display:block;color:var(--ink);font-weight:500;font-size:.98rem}
 .proc small{color:var(--muted)}
+.members{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.person{display:flex;gap:12px;align-items:center;text-align:left;background:var(--shell);border:1px solid transparent;border-radius:var(--radius);padding:10px 14px;cursor:pointer;color:var(--text);transition:.2s}
+.person:hover{border-color:var(--sand)}
+.person.sel{border-color:var(--ink);background:var(--white)}
+.person .ph{width:40px;height:48px;flex:none;border-radius:999px 999px 3px 3px;background:linear-gradient(180deg,var(--linen),var(--taupe));display:grid;place-items:end center;overflow:hidden;color:var(--white)}
+.person .ph.any{place-items:center}
+.person .ph svg{width:80%;fill:rgba(255,255,255,.8)}
+.person .ph img{width:100%;height:100%;object-fit:cover}
+.person b{display:block;color:var(--ink);font-weight:500;font-size:.95rem}
+.person small{color:var(--muted)}
 .days{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x mandatory}
 .day{flex:0 0 64px;scroll-snap-align:start;border:1px solid var(--linen);background:var(--white);border-radius:999px 999px 4px 4px;padding:12px 0 8px;text-align:center;cursor:pointer;color:var(--text);line-height:1.25;transition:.2s}
 .day small{display:block;color:var(--muted);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
