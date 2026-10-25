@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
-import { mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus } from './mail.js';
+import {
+  mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
+} from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const TIMEZONE = process.env.TIMEZONE || 'Europe/Bratislava';
@@ -390,6 +392,12 @@ app.get('/api/admin/bookings', (req, res) => {
   const where = [scope];
   const params = [...scopeParams];
   switch (req.query.range) {
+    // kalendár: konkrétne obdobie (from – to vrátane)
+    case 'period':
+      if (!isDate(req.query.from) || !isDate(req.query.to)) throw bad('Neplatné obdobie.');
+      where.push('b.date BETWEEN ? AND ?');
+      params.push(req.query.from, req.query.to);
+      break;
     case 'today': where.push('b.date = ?'); params.push(today); break;
     case 'past': where.push('b.date < ?'); params.push(today); break;
     case 'all': break;
@@ -428,6 +436,10 @@ app.patch('/api/admin/bookings/:id', (req, res) => {
       throw new HttpError(409, `${member.name} má v tomto čase inú rezerváciu.`);
     }
     db.prepare('UPDATE bookings SET member_id = ?, member_name = ? WHERE id = ?').run(member?.id ?? null, member?.name ?? '', booking.id);
+    // potvrdený termín preradený inému terapeutovi – nový terapeut dostane upozornenie
+    if (member && member.id !== booking.member_id && booking.status === 'confirmed') {
+      notifyMember({ ...booking, member_id: member.id, member_name: member.name }, 'assigned');
+    }
     return res.json({ ok: true });
   }
 
@@ -439,8 +451,20 @@ app.patch('/api/admin/bookings/:id', (req, res) => {
   }
   db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, booking.id);
   if (booking.status !== status) notifyStatus(booking, status);
+  // terapeut dostane upozornenie, keď mu rezerváciu potvrdí niekto iný (admin)
+  if (status === 'confirmed' && booking.status !== 'confirmed' && booking.member_id && booking.member_id !== req.user.member_id) {
+    notifyMember(booking, 'confirmed');
+  }
   res.json({ ok: true });
 });
+
+// e-mail terapeutovi: na všetky účty napojené na člena tímu, ktoré majú vyplnený e-mail
+function notifyMember(booking, kind) {
+  const emails = db.prepare("SELECT email FROM users WHERE member_id = ? AND email != ''").all(booking.member_id).map((u) => u.email);
+  if (!emails.length) return;
+  const room = booking.room_id && db.prepare('SELECT name FROM rooms WHERE id = ?').get(booking.room_id);
+  notifyTherapist({ ...booking, room_name: room?.name ?? '' }, emails, kind);
+}
 
 app.delete('/api/admin/bookings/:id', (req, res) => {
   if (!isAdmin(req)) throw new HttpError(403, 'Vymazať rezerváciu môže len admin.');

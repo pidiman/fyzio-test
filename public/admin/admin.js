@@ -91,7 +91,7 @@ async function showApp() {
   document.querySelectorAll('[data-admin]').forEach((el) => { el.hidden = !isAdmin(); });
   $('#login').hidden = true;
   $('#app').hidden = false;
-  openTab('bookings');
+  openTab(location.hash === '#kalendar' ? 'calendar' : 'bookings');
 }
 
 $('#login-form').addEventListener('submit', async (e) => {
@@ -116,6 +116,7 @@ $('#logout').addEventListener('click', guard(async () => {
 
 const loaders = {
   bookings: () => loadBookings(),
+  calendar: () => loadCalendar(),
   procedures: () => loadProcedures(),
   team: () => loadTeam(),
   users: () => loadUsers(),
@@ -210,6 +211,192 @@ $('#bookings').addEventListener('change', async (e) => {
     toast(err.message, true);
   }
   loadBookings();
+});
+
+// ---------- kalendár ----------
+
+const HOUR_PX = 56;
+const addDays = (date, n) => {
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const dow = (date) => new Date(date + 'T00:00:00Z').getUTCDay();
+const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const shortDate = (d) => { const [, m, day] = d.split('-').map(Number); return `${day}. ${m}.`; };
+// na úzkej obrazovke deň, inak týždeň od pondelka
+const calDays = () => (innerWidth < 760 ? 1 : 7);
+
+const cal = { start: null, days: 0, info: null, bookings: [] };
+
+// prekrývajúce sa rezervácie (rôzne miestnosti/terapeuti) sa zobrazia vedľa seba
+function layoutDay(events) {
+  const sorted = [...events].sort((a, b) => a.start - b.start || b.end - a.end);
+  let cluster = [], clusterEnd = -1;
+  const flush = () => {
+    const cols = Math.max(...cluster.map((e) => e.col)) + 1;
+    cluster.forEach((e) => { e.cols = cols; });
+    cluster = [];
+  };
+  for (const e of sorted) {
+    if (cluster.length && e.start >= clusterEnd) flush();
+    const ends = [];
+    cluster.forEach((c) => { ends[c.col] = Math.max(ends[c.col] ?? 0, c.end); });
+    e.col = ends.findIndex((end) => end <= e.start);
+    if (e.col < 0) e.col = ends.length;
+    cluster.push(e);
+    clusterEnd = Math.max(clusterEnd, e.end);
+  }
+  if (cluster.length) flush();
+  return sorted;
+}
+
+const loadCalendar = guard(async () => {
+  cal.info ??= await api('/api/info');
+  const days = calDays();
+  cal.start ??= cal.info.today;
+  // týždeň vždy od pondelka
+  if (days === 7) cal.start = addDays(cal.start, -((dow(cal.start) + 6) % 7));
+  cal.days = days;
+  const end = addDays(cal.start, days - 1);
+
+  if (isAdmin()) {
+    teamOptions = await api('/api/admin/team');
+    const current = $('#cal-member').value;
+    $('#cal-member').innerHTML = '<option value="">Všetci terapeuti</option><option value="none">Nepriradené</option>' +
+      teamOptions.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    $('#cal-member').value = current;
+  }
+  const params = new URLSearchParams({ range: 'period', from: cal.start, to: end });
+  if (isAdmin() && $('#cal-member').value) params.set('member', $('#cal-member').value);
+  cal.bookings = await api(`/api/admin/bookings?${params}`);
+  renderCalendar();
+});
+
+function renderCalendar() {
+  const { info, start, days } = cal;
+  const dates = Array.from({ length: days }, (_, i) => addDays(start, i));
+  const end = dates.at(-1);
+  $('#cal-title').textContent = days === 1
+    ? fmtDate(start)
+    : `${shortDate(start)} – ${shortDate(end)} ${end.slice(0, 4)}`;
+
+  const bookings = cal.bookings.filter((b) => $('#cal-cancelled').checked || b.status !== 'cancelled');
+  // zobrazené hodiny: od najskoršieho otvorenia po najneskoršie zatvorenie (aj s rezerváciami mimo nich)
+  const open = dates.map((d) => info.hours[dow(d)]).filter(Boolean);
+  let from = Math.min(...open.map((h) => toMin(h[0])), ...bookings.map((b) => toMin(b.time)), 7 * 60);
+  let to = Math.max(...open.map((h) => toMin(h[1])), ...bookings.map((b) => toMin(b.end_time)), 18 * 60);
+  from = Math.floor(from / 60) * 60;
+  to = Math.ceil(to / 60) * 60;
+  const px = (min) => ((min - from) / 60) * HOUR_PX;
+  const height = px(to);
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const hours = Array.from({ length: (to - from) / 60 }, (_, i) => from + i * 60);
+
+  const columns = dates.map((d) => {
+    const h = info.hours[dow(d)];
+    const closed = !h || info.blocked_dates.includes(d);
+    const off = closed
+      ? `<div class="cal-off" style="top:0;height:${height}px"></div>`
+      : `<div class="cal-off" style="top:0;height:${px(toMin(h[0]))}px"></div>` +
+        `<div class="cal-off" style="top:${px(toMin(h[1]))}px;height:${height - px(toMin(h[1]))}px"></div>`;
+    const events = layoutDay(bookings.filter((b) => b.date === d).map((b) => ({ b, start: toMin(b.time), end: toMin(b.end_time) })));
+    return `
+      <div class="cal-col" style="height:${height}px">
+        ${off}
+        ${events.map(({ b, start: s, end: e, col, cols }) => `
+          <button class="ev st-${b.status}" data-ev="${b.id}"
+            style="top:${px(s)}px;height:${Math.max(px(e) - px(s), 22) - 2}px;left:calc(${(col / cols) * 100}% + 2px);width:calc(${100 / cols}% - 4px)">
+            <b>${b.time} ${esc(b.name)}</b>
+            <small>${esc(b.procedure_name)}${isAdmin() && b.member_name ? ` · ${esc(b.member_name)}` : ''}</small>
+          </button>`).join('')}
+        ${d === info.today && nowMin >= from && nowMin <= to ? `<div class="cal-now" style="top:${px(nowMin)}px"></div>` : ''}
+      </div>`;
+  });
+
+  $('#cal').innerHTML = `
+    <div class="cal-grid" style="--days:${days}">
+      <div class="cal-head">
+        <div></div>
+        ${dates.map((d) => `<div class="cal-dh ${d === info.today ? 'today' : ''}"><span>${DAYS_SHORT[dow(d)]}</span><b>${Number(d.slice(8))}</b></div>`).join('')}
+      </div>
+      <div class="cal-body">
+        <div class="cal-times" style="height:${height}px">${hours.map((m) => `<span style="top:${px(m)}px">${String(m / 60).padStart(2, '0')}:00</span>`).join('')}</div>
+        ${columns.join('')}
+      </div>
+    </div>`;
+}
+
+function openEvent(b) {
+  const dlg = $('#ev-dialog');
+  dlg.innerHTML = `
+    <div class="ev-head st-${b.status}">
+      <span class="badge b-${b.status}">${STATUS[b.status]}</span>
+      <button class="ev-close" data-close aria-label="Zavrieť">×</button>
+    </div>
+    <h3>${esc(b.name)}</h3>
+    <dl>
+      <dt>Termín</dt><dd>${fmtDate(b.date)}, ${b.time} – ${b.end_time}</dd>
+      <dt>Procedúra</dt><dd>${esc(b.procedure_name)} · ${eur(b.price)}</dd>
+      ${b.room_name ? `<dt>Miestnosť</dt><dd>${esc(b.room_name)}</dd>` : ''}
+      ${!isAdmin() ? '' : `<dt>Terapeut</dt><dd><select data-assign="${b.id}">${memberSelect(b.member_id)}</select></dd>`}
+      ${b.email ? `<dt>E-mail</dt><dd><a href="mailto:${esc(b.email)}">${esc(b.email)}</a></dd>` : ''}
+      ${b.phone ? `<dt>Telefón</dt><dd><a href="tel:${esc(b.phone.replace(/\s/g, ''))}">${esc(b.phone)}</a></dd>` : ''}
+      ${b.note ? `<dt>Poznámka</dt><dd class="note">${esc(b.note)}</dd>` : ''}
+    </dl>
+    <div class="bk-actions">
+      ${b.status === 'new' ? `<button class="btn btn-primary btn-sm" data-status="confirmed" data-id="${b.id}">Potvrdiť</button>` : ''}
+      ${b.status === 'confirmed' ? `<button class="btn btn-ghost btn-sm" data-status="done" data-id="${b.id}">Dokončená</button>` : ''}
+      ${b.status !== 'cancelled' && b.status !== 'done' ? `<button class="btn btn-ghost btn-sm" data-status="cancelled" data-id="${b.id}">Zrušiť</button>` : ''}
+      ${b.status === 'cancelled' ? `<button class="btn btn-ghost btn-sm" data-status="new" data-id="${b.id}">Obnoviť</button>` : ''}
+    </div>`;
+  dlg.showModal();
+}
+
+$('#cal').addEventListener('click', (e) => {
+  const ev = e.target.closest('[data-ev]');
+  if (ev) openEvent(cal.bookings.find((b) => b.id === Number(ev.dataset.ev)));
+});
+
+$('#ev-dialog').addEventListener('click', guard(async (e) => {
+  const dlg = $('#ev-dialog');
+  // klik na pozadie alebo × zavrie
+  if (e.target === dlg || e.target.closest('[data-close]')) return dlg.close();
+  const btn = e.target.closest('[data-status]');
+  if (!btn) return;
+  await api(`/api/admin/bookings/${btn.dataset.id}`, { method: 'PATCH', body: { status: btn.dataset.status } });
+  dlg.close();
+  toast(`Stav zmenený: ${STATUS[btn.dataset.status]}`);
+  loadCalendar();
+}));
+
+$('#ev-dialog').addEventListener('change', guard(async (e) => {
+  const sel = e.target.closest('[data-assign]');
+  if (!sel) return;
+  await api(`/api/admin/bookings/${sel.dataset.assign}`, { method: 'PATCH', body: { member_id: sel.value ? Number(sel.value) : null } });
+  $('#ev-dialog').close();
+  toast('Terapeut zmenený');
+  loadCalendar();
+}));
+
+const shiftCalendar = (dir) => {
+  cal.start = addDays(cal.start, dir * cal.days);
+  loadCalendar();
+};
+$('#cal-prev').addEventListener('click', () => shiftCalendar(-1));
+$('#cal-next').addEventListener('click', () => shiftCalendar(1));
+$('#cal-today').addEventListener('click', () => { cal.start = cal.info.today; loadCalendar(); });
+$('#cal-member').addEventListener('change', loadCalendar);
+$('#cal-cancelled').addEventListener('change', renderCalendar);
+
+let resizeTimer;
+addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (!$('#tab-calendar').hidden && calDays() !== cal.days) loadCalendar();
+  }, 200);
 });
 
 // ---------- procedúry a miestnosti ----------

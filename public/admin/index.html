@@ -45,6 +45,7 @@
     </div>
     <nav class="wrap tabs">
       <button data-tab="bookings" class="active">Rezervácie</button>
+      <button data-tab="calendar">Kalendár</button>
       <button data-tab="procedures" data-admin>Procedúry</button>
       <button data-tab="team" data-admin>Tím</button>
       <button data-tab="users" data-admin>Používatelia</button>
@@ -75,6 +76,25 @@
         <button class="btn btn-ghost btn-sm" id="refresh">↻ Obnoviť</button>
       </div>
       <div class="list" id="bookings"></div>
+    </section>
+
+    <!-- Kalendár -->
+    <section id="tab-calendar" hidden>
+      <div class="toolbar">
+        <div class="cal-nav">
+          <button class="btn btn-ghost btn-sm" id="cal-prev" aria-label="Predchádzajúce obdobie">‹</button>
+          <button class="btn btn-ghost btn-sm" id="cal-today">Dnes</button>
+          <button class="btn btn-ghost btn-sm" id="cal-next" aria-label="Nasledujúce obdobie">›</button>
+        </div>
+        <h2 id="cal-title"></h2>
+        <select id="cal-member" data-admin></select>
+        <label class="check"><input type="checkbox" id="cal-cancelled"> Zrušené</label>
+      </div>
+      <div class="cal" id="cal"></div>
+      <div class="cal-legend">
+        <span class="ev-dot st-new"></span>Nová <span class="ev-dot st-confirmed"></span>Potvrdená
+        <span class="ev-dot st-done"></span>Dokončená <span class="ev-dot st-cancelled"></span>Zrušená
+      </div>
     </section>
 
     <!-- Procedúry -->
@@ -247,6 +267,8 @@
     </section>
   </main>
 </div>
+
+<dialog class="ev-dialog" id="ev-dialog"></dialog>
 
 <div class="toast" id="toast"></div>
 

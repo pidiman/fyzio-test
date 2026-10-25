@@ -216,6 +216,37 @@ export function notifyPasswordSet(user, isNew, adminEmails) {
   });
 }
 
+// Upozornenie terapeutovi na potvrdený alebo preradený termín (kind: confirmed | assigned)
+export function notifyTherapist(b, emails, kind) {
+  const { url } = contact();
+  const when = `${fmtDate(b.date)}, ${b.time} – ${b.end_time}`;
+  const intro = kind === 'assigned'
+    ? 'bol vám pridelený potvrdený termín.'
+    : 'termín u vás bol potvrdený.';
+  const rows = [
+    ['Klient', b.name],
+    ['Kontakt', [b.email, b.phone].filter(Boolean).join(' · ') || '—'],
+    ['Procedúra', b.procedure_name],
+    ['Termín', when],
+    ...(b.room_name ? [['Miestnosť', b.room_name]] : []),
+    ...(b.note ? [['Poznámka', b.note]] : []),
+  ];
+  sendLater(emails.join(', '), {
+    subject: `${kind === 'assigned' ? 'Pridelený termín' : 'Potvrdený termín'}: ${fmtDate(b.date)} ${b.time} – ${b.name}`,
+    text: `Dobrý deň, ${b.member_name},\n\n${intro}\n\n` +
+      rows.map(([k, v]) => `${(k + ':').padEnd(11)}${v}`).join('\n') +
+      (url ? `\n\nKalendár: ${url}/admin/#kalendar` : ''),
+    html: emailHtml({
+      preheader: `${b.procedure_name}, ${when} – ${b.name}`,
+      eyebrow: kind === 'assigned' ? 'Pridelený termín' : 'Potvrdený termín',
+      title: b.name, name: b.member_name, rows,
+      lines: [esc(intro)],
+      button: url ? { label: 'Otvoriť kalendár', href: `${url}/admin/#kalendar` } : null,
+      footnote: 'Tento e-mail bol odoslaný automaticky z administrácie.',
+    }),
+  });
+}
+
 export function notifyNewBooking(b) {
   sendLater(
     ADMIN_EMAIL,
