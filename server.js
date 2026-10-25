@@ -367,7 +367,7 @@ app.use('/api/admin', (req, res, next) => {
 
 const isAdmin = (req) => req.user.role === 'admin';
 app.use(
-  ['/api/admin/procedures', '/api/admin/rooms', '/api/admin/team', '/api/admin/users', '/api/admin/settings', '/api/admin/mail'],
+  ['/api/admin/procedures', '/api/admin/rooms', '/api/admin/team', '/api/admin/users', '/api/admin/clients', '/api/admin/settings', '/api/admin/mail'],
   (req, res, next) => {
     if (!isAdmin(req)) throw new HttpError(403, 'Na túto akciu nemáte oprávnenie.');
     next();
@@ -791,6 +791,22 @@ app.delete('/api/admin/users/:id', (req, res) => {
   if (id === req.user.id) throw bad('Nemôžete vymazať vlastný účet.');
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
   endSessions(id);
+  res.json({ ok: true });
+});
+
+// ---------- klienti registrovaní na webe (len admin) ----------
+
+app.get('/api/admin/clients', (req, res) => {
+  res.json(db.prepare(`
+    SELECT c.id, c.name, c.email, c.phone, c.gdpr_consent_at, c.created_at,
+           (SELECT COUNT(*) FROM bookings b WHERE b.client_id = c.id) AS bookings
+    FROM clients c ORDER BY c.created_at DESC
+  `).all());
+});
+
+// vymazanie na žiadosť klienta (GDPR); rezervácie ostanú bez väzby na účet
+app.delete('/api/admin/clients/:id', (req, res) => {
+  db.prepare('DELETE FROM clients WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
 });
 

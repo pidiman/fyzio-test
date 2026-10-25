@@ -153,6 +153,9 @@ label.check input{width:18px;height:18px;accent-color:var(--br-600)}
 /* Team & users */
 .pr.tm{grid-template-columns:60px 1fr auto}
 .pr.us{grid-template-columns:44px 1fr auto}
+.clients-head{margin-top:36px}
+.clients-head .count{color:var(--muted);font-weight:400;font-size:1rem}
+#client-search{min-width:min(280px,100%)}
 .photo{width:120px;aspect-ratio:3/4;border-radius:999px 999px 6px 6px;background:linear-gradient(180deg,var(--br-100),#c5b9a8);display:grid;place-items:end center;overflow:hidden;flex:none}
 .photo.sm{width:60px}
 .photo svg{width:76%;fill:rgba(255,255,255,.8)}

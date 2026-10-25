@@ -615,7 +615,8 @@ let users = [];
 const userForm = $('#user-form');
 
 const loadUsers = guard(async () => {
-  [users, team] = await Promise.all([api('/api/admin/users'), api('/api/admin/team')]);
+  [users, team, clients] = await Promise.all([api('/api/admin/users'), api('/api/admin/team'), api('/api/admin/clients')]);
+  renderClients();
   $('#user-member').innerHTML = '<option value="">— žiadny —</option>' +
     team.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
   $('#users').innerHTML = users.map((u) => `
@@ -691,6 +692,43 @@ $('#users').addEventListener('click', guard(async (e) => {
     toast('Používateľ vymazaný');
     loadUsers();
   }
+}));
+
+// ---------- klienti z webu ----------
+
+let clients = [];
+// časy z databázy sú v UTC („YYYY-MM-DD HH:MM:SS“)
+const fmtStamp = (s) => new Date(s.replace(' ', 'T') + 'Z').toLocaleString('sk-SK', { dateStyle: 'short', timeStyle: 'short' });
+
+function renderClients() {
+  const q = $('#client-search').value.trim().toLowerCase();
+  const shown = q
+    ? clients.filter((c) => [c.name, c.email, c.phone].some((v) => v.toLowerCase().includes(q)))
+    : clients;
+  $('#clients-count').textContent = `(${clients.length})`;
+  $('#clients').innerHTML = shown.map((c) => `
+    <div class="pr us">
+      <div class="ic">👤</div>
+      <div><b>${esc(c.name)}</b>
+        <p>${[esc(c.email), c.phone && esc(c.phone), `rezervácií: ${c.bookings}`].filter(Boolean).join(' · ')}</p>
+        <p>Registrácia ${fmtStamp(c.created_at)} · súhlas GDPR ${fmtStamp(c.gdpr_consent_at)}</p></div>
+      <div class="bk-actions pr-actions">
+        <button class="btn btn-danger btn-sm" data-delete-client="${c.id}">Vymazať</button>
+      </div>
+    </div>`).join('') ||
+    `<p class="muted">${clients.length ? 'Nič sa nenašlo.' : 'Zatiaľ sa nezaregistroval žiadny klient.'}</p>`;
+}
+
+$('#client-search').addEventListener('input', renderClients);
+
+$('#clients').addEventListener('click', guard(async (e) => {
+  const del = e.target.closest('[data-delete-client]');
+  if (!del) return;
+  const c = clients.find((x) => x.id === Number(del.dataset.deleteClient));
+  if (!confirm(`Vymazať účet klienta ${c.name} (${c.email})? Údaje účtu sa natrvalo odstránia, rezervácie ostanú.`)) return;
+  await api(`/api/admin/clients/${c.id}`, { method: 'DELETE' });
+  toast('Klient vymazaný');
+  loadUsers();
 }));
 
 // ---------- môj účet ----------
