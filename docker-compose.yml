@@ -18,9 +18,12 @@ services:
       - fyzio-data:/app/data
     networks:
       - web
+      - db-shared
 
 networks:
   web:
+    external: true
+  db-shared:
     external: true
 
 volumes:
