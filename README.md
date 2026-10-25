@@ -1,4 +1,4 @@
-# FyzioPlus – web s online rezerváciou
+# FYZIO Stupava – web s online rezerváciou
 
 Node.js (Express) + SQLite (vstavané `node:sqlite`, žiadny databázový server).
 
@@ -61,7 +61,7 @@ docker inspect smtp-relay --format '{{range $k,$v := .NetworkSettings.Networks}}
 Spoločne pre obe varianty (bez `SMTP_USER`/`SMTP_PASS` – relay neoveruje):
 
 ```bash
-MAIL_FROM="FyzioPlus <rezervacie@pidiman.sk>"   # doména, ktorú relay smie odosielať
+MAIL_FROM="FYZIO Stupava <rezervacie@pidiman.sk>"   # doména, ktorú relay smie odosielať
 ADMIN_EMAIL=kam.chodia.rezervacie@gmail.com
 SITE_URL=https://fyzio.pidiman.sk
 CONTACT_PHONE=+421 900 123 456
@@ -74,9 +74,9 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=vas.ucet@gmail.com
 SMTP_PASS=xxxxxxxxxxxxxxxx          # Gmail: heslo aplikácie (myaccount.google.com/apppasswords)
-MAIL_FROM="FyzioPlus <vas.ucet@gmail.com>"
+MAIL_FROM="FYZIO Stupava <vas.ucet@gmail.com>"
 ADMIN_EMAIL=kam.chodia.rezervacie@gmail.com
-SITE_NAME=FyzioPlus
+SITE_NAME="FYZIO Stupava"
 SITE_URL=https://fyzio.pidiman.sk
 CONTACT_PHONE=+421 900 123 456
 ```
