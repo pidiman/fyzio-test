@@ -699,8 +699,8 @@ $('#users').addEventListener('click', guard(async (e) => {
 // ---------- klienti z webu ----------
 
 let clients = [];
-// časy z databázy sú v UTC („YYYY-MM-DD HH:MM:SS“)
-const fmtStamp = (s) => new Date(s.replace(' ', 'T') + 'Z').toLocaleString('sk-SK', { dateStyle: 'short', timeStyle: 'short' });
+// časy z databázy prichádzajú ako ISO reťazec s časovou zónou
+const fmtStamp = (s) => new Date(s).toLocaleString('sk-SK', { dateStyle: 'short', timeStyle: 'short' });
 
 function renderClients() {
   const q = $('#client-search').value.trim().toLowerCase();

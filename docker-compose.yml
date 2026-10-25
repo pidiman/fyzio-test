@@ -8,23 +8,55 @@ services:
         required: false
     environment:
       PORT: 3000
+      # vlastná databáza fyzio-db (heslo z POSTGRES_PASSWORD v .env)
+      PGHOST: db
+      PGUSER: fyzio
+      PGDATABASE: fyzio
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Nastavte POSTGRES_PASSWORD v .env}
+    depends_on:
+      db:
+        condition: service_healthy
     # len pre lokálny test na serveri (curl http://127.0.0.1:8092), verejne ide cez Caddy
     ports:
       - "127.0.0.1:8092:3000"
     # smtp-relay s portom zverejneným na hostiteľovi je dostupný ako host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # fotky tímu; pôvodná SQLite databáza ostáva ako záloha fyzio.db.migrated
     volumes:
       - fyzio-data:/app/data
     networks:
       - web
       - db-shared
+      - internal
+
+  # Postgres len pre fyzio: dostupný iba z kontajnera web, port nie je zverejnený
+  db:
+    image: postgres:18-alpine
+    container_name: fyzio-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fyzio
+      POSTGRES_DB: fyzio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Nastavte POSTGRES_PASSWORD v .env}
+    volumes:
+      - fyzio-pg:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fyzio -d fyzio"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 networks:
   web:
     external: true
   db-shared:
     external: true
+  # súkromná sieť web ↔ db
+  internal:
 
 volumes:
   fyzio-data:
+  fyzio-pg:

@@ -1,6 +1,6 @@
 # FYZIO Stupava – web s online rezerváciou
 
-Node.js (Express) + SQLite (vstavané `node:sqlite`, žiadny databázový server).
+Node.js (Express) + PostgreSQL (vlastný kontajner `fyzio-db`).
 
 - `/` – verejný web, objednávanie na procedúry (výber procedúry → deň → voľný čas → údaje)
 - `/admin` – administrácia: rezervácie (potvrdiť / dokončiť / zrušiť / vymazať / preradiť terapeutovi), procedúry a miestnosti,
@@ -18,11 +18,15 @@ a aspoň jeden z terapeutov procedúry; klient si na webe môže terapeuta vybra
 
 ```bash
 npm install
-cp .env.example .env      # nastav ADMIN_PASSWORD
+cp .env.example .env      # nastav ADMIN_PASSWORD a pripojenie k Postgresu
 npm run dev               # http://localhost:3000
 ```
 
-Vyžaduje Node.js 24 alebo novší. Databáza sa vytvorí v `data/fyzio.db` a pri prvom spustení sa naplní ukážkovými procedúrami.
+Vyžaduje Node.js 24 alebo novší a PostgreSQL (napr. `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=fyzio postgres:18-alpine`).
+Pripojenie sa nastavuje v `.env` cez `DATABASE_URL=postgres://postgres:fyzio@localhost:5432/postgres`
+alebo štandardné premenné `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`.
+Tabuľky sa vytvoria pri štarte a prázdna databáza sa naplní ukážkovými procedúrami a tímom.
+Fotky tímu sa ukladajú do `data/media`.
 Pri prvom spustení sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (ak nie je nastavené, server vypíše dočasné heslo).
 Ďalšie účty sa zakladajú v administrácii, `ADMIN_PASSWORD` sa potom už nepoužíva – heslo zmeníte v záložke *Môj účet*.
 
@@ -95,9 +99,10 @@ ssh oracle-free-1-ts
 git clone https://github.com/pidiman/fyzio-test.git ~/docker/fyzio
 cd ~/docker/fyzio
 
-# heslo do adminu
+# heslo do adminu a do databázy
 umask 077
 echo "ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)" > .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 cat .env
 
 docker compose up -d --build
@@ -168,19 +173,34 @@ Runner sa pripojí do Tailscale siete a cez SSH spustí na serveri `deploy.sh`.
 
 4. Overenie: *Actions → Deploy → Run workflow*.
 
-### Záloha
+### Databáza
 
-Databáza je vo volume `fyzio_fyzio-data`:
+Postgres beží v kontajneri `fyzio-db` (dáta vo volume `fyzio_fyzio-pg`), dostupný je len z `fyzio-web`
+cez súkromnú sieť – port nie je zverejnený. Heslo je `POSTGRES_PASSWORD` v `.env`; bez neho `docker compose` odmietne štart.
 
 ```bash
-docker run --rm -v fyzio_fyzio-data:/data -v ~/backups:/b alpine \
-  tar czf /b/fyzio-$(date +%F).tgz -C /data .
+docker exec -it fyzio-db psql -U fyzio fyzio     # konzola databázy
 ```
+
+**Prechod zo SQLite:** pri prvom štarte s prázdnym Postgresom sa dáta z `data/fyzio.db` automaticky prenesú
+(postup je v logu `docker logs fyzio-web`) a súbor sa premenuje na `fyzio.db.migrated` – ostáva ako záloha.
+
+### Záloha
+
+```bash
+# databáza
+docker exec fyzio-db pg_dump -U fyzio -Fc fyzio > ~/backups/fyzio-$(date +%F).dump
+# fotky tímu
+docker run --rm -v fyzio_fyzio-data:/data -v ~/backups:/b alpine \
+  tar czf /b/fyzio-media-$(date +%F).tgz -C /data .
+```
+
+Obnova databázy: `docker exec -i fyzio-db pg_restore -U fyzio -d fyzio --clean < ~/backups/fyzio-RRRR-MM-DD.dump`
 
 ## Poznámky
 
 - Rezervácie sa nesmú prekrývať v rovnakej miestnosti ani u rovnakého terapeuta.
-- Fotky tímu sú v `data/media` (v Dockeri vo volume `fyzio-data`, zálohujú sa spolu s databázou).
+- Fotky tímu sú v `data/media` (v Dockeri vo volume `fyzio-data`).
 - Prihlásenia do adminu sa ukladajú do databázy (len hash tokenu), reštart ani nasadenie nikoho neodhlási.
 - Fonty (Jost, Playfair Display) sú v `public/fonts`, web nenačítava nič z Google Fonts.
 

@@ -42,20 +42,25 @@ function verifyPassword(password, stored) {
 const DUMMY_HASH = hashPassword(crypto.randomBytes(9).toString('base64url'));
 
 // Prvý účet: admin s heslom z ADMIN_PASSWORD (ďalšie účty sa zakladajú v administrácii)
-if (!db.prepare('SELECT 1 FROM users').get()) {
+if (!(await db.get('SELECT 1 FROM users LIMIT 1'))) {
   let password = process.env.ADMIN_PASSWORD;
   if (!password) {
     password = crypto.randomBytes(9).toString('base64url');
     console.warn(`ADMIN_PASSWORD nie je nastavené – dočasné heslo pre účet „admin“: ${password}`);
   }
-  db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')").run(hashPassword(password));
+  await db.run("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')", hashPassword(password));
   console.log('Vytvorený účet „admin“ (heslo z ADMIN_PASSWORD).');
 }
 
 // ---------- pomocné funkcie (dátumy a časy sú v lokálnom čase prevádzky) ----------
 
 const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
-const ids = (v) => (Array.isArray(v) ? [...new Set(v.map(Number).filter(Number.isInteger))] : []);
+// id zo vstupu; neplatné číslo (aj mimo rozsahu integer v Postgrese) = -1, teda nič sa nenájde
+const num = (v) => {
+  const n = Number(v);
+  return Number.isInteger(n) && Math.abs(n) < 2 ** 31 ? n : -1;
+};
+const ids = (v) => (Array.isArray(v) ? [...new Set(v.map(num).filter((n) => n > 0))] : []);
 
 function localNow() {
   const s = new Intl.DateTimeFormat('sv-SE', {
@@ -66,23 +71,31 @@ function localNow() {
   return { date, min: toMin(time) };
 }
 
+// Zmeny rezervácií (kontrola voľného termínu a zápis) prebiehajú jedna po druhej,
+// aby dve súbežné požiadavky nedostali ten istý termín. Aplikácia beží v jednej inštancii.
+let bookingQueue = Promise.resolve();
+function serialized(fn) {
+  const run = bookingQueue.then(fn, fn);
+  bookingQueue = run.catch(() => {});
+  return run;
+}
+
 // ---------- voľné termíny ----------
 
 // column je vždy pevný názov stĺpca z kódu, nikdy vstup od používateľa
-const busy = (date, column, id) => db
-  .prepare(`SELECT time, end_time FROM bookings WHERE date = ? AND ${column} = ? AND status != 'cancelled'`)
-  .all(date, id)
-  .map((b) => [toMin(b.time), toMin(b.end_time)]);
+const busy = async (date, column, id) =>
+  (await db.all(`SELECT time, end_time FROM bookings WHERE date = ? AND ${column} = ? AND status != 'cancelled'`, date, id))
+    .map((b) => [toMin(b.time), toMin(b.end_time)]);
 
-const procedureMembers = (procedureId) => db.prepare(`
+const procedureMembers = async (procedureId) => (await db.all(`
   SELECT m.id FROM procedure_members pm JOIN team_members m ON m.id = pm.member_id
   WHERE pm.procedure_id = ? AND m.active = 1 ORDER BY m.sort, m.name
-`).all(procedureId).map((r) => r.id);
+`, procedureId)).map((r) => r.id);
 
 // voľné termíny procedúry v daný deň (pozri freeSlots), memberId obmedzí výber na jedného terapeuta
-function availability(date, proc, memberId) {
+async function availability(date, proc, memberId) {
   if (!isDate(date)) return new Map();
-  let members = procedureMembers(proc.id);
+  let members = await procedureMembers(proc.id);
   if (memberId) {
     if (!members.includes(memberId)) return new Map();
     members = [memberId];
@@ -92,17 +105,17 @@ function availability(date, proc, memberId) {
     now: localNow(),
     settings: getSettings(),
     duration: proc.duration_min,
-    roomBusy: proc.room_id ? busy(date, 'room_id', proc.room_id) : [],
-    memberBusy: members.map((id) => [id, busy(date, 'member_id', id)]),
+    roomBusy: proc.room_id ? await busy(date, 'room_id', proc.room_id) : [],
+    memberBusy: await Promise.all(members.map(async (id) => [id, await busy(date, 'member_id', id)])),
   });
 }
 
 // prekrytie rezervácie s inou v rovnakej miestnosti alebo u rovnakého terapeuta
-function hasClash(b, memberId) {
-  const check = (column, id) => id != null && db.prepare(`
+async function hasClash(b, memberId) {
+  const check = (column, id) => id != null && db.get(`
     SELECT 1 FROM bookings WHERE date = ? AND id != ? AND status != 'cancelled' AND ${column} = ? AND time < ? AND end_time > ?
-  `).get(b.date, b.id, id, b.end_time, b.time);
-  return !!(check('room_id', b.room_id) || check('member_id', memberId));
+  `, b.date, b.id, id, b.end_time, b.time);
+  return !!((await check('room_id', b.room_id)) || (await check('member_id', memberId)));
 }
 
 function rateLimit(max, windowMs) {
@@ -137,16 +150,16 @@ app.get('/api/info', (req, res) => {
   res.json({ hours, blocked_dates, max_days_ahead, contact_phone, address, today: localNow().date });
 });
 
-app.get('/api/procedures', (req, res) => {
+app.get('/api/procedures', async (req, res) => {
   res.json(
-    db.prepare('SELECT id, name, description, duration_min, price, icon FROM procedures WHERE active = 1 ORDER BY sort, name').all()
+    await db.all('SELECT id, name, description, duration_min, price, icon FROM procedures WHERE active = 1 ORDER BY sort, name')
   );
 });
 
-app.get('/api/team', (req, res) => {
-  const links = db.prepare('SELECT procedure_id, member_id FROM procedure_members').all();
+app.get('/api/team', async (req, res) => {
+  const links = await db.all('SELECT procedure_id, member_id FROM procedure_members');
   res.json(
-    db.prepare('SELECT id, name, title, photo FROM team_members WHERE active = 1 ORDER BY sort, name').all().map((m) => ({
+    (await db.all('SELECT id, name, title, photo FROM team_members WHERE active = 1 ORDER BY sort, name')).map((m) => ({
       ...m,
       photo: m.photo ? `/media/${m.photo}` : '',
       procedures: links.filter((l) => l.member_id === m.id).map((l) => l.procedure_id),
@@ -154,15 +167,15 @@ app.get('/api/team', (req, res) => {
   );
 });
 
-app.get('/api/slots', (req, res) => {
-  const proc = db.prepare('SELECT id, duration_min, room_id FROM procedures WHERE id = ? AND active = 1').get(Number(req.query.procedure));
+app.get('/api/slots', async (req, res) => {
+  const proc = await db.get('SELECT id, duration_min, room_id FROM procedures WHERE id = ? AND active = 1', num(req.query.procedure));
   if (!proc) throw bad('Neznáma procedúra.');
-  res.json([...availability(req.query.date, proc, Number(req.query.member) || null).keys()]);
+  res.json([...(await availability(req.query.date, proc, Number(req.query.member) || null)).keys()]);
 });
 
-app.post('/api/bookings', rateLimit(10, 3600e3), (req, res) => {
+app.post('/api/bookings', rateLimit(10, 3600e3), async (req, res) => {
   const b = req.body ?? {};
-  const proc = db.prepare('SELECT * FROM procedures WHERE id = ? AND active = 1').get(Number(b.procedure_id));
+  const proc = await db.get('SELECT * FROM procedures WHERE id = ? AND active = 1', num(b.procedure_id));
   if (!proc) throw bad('Vyberte procedúru.');
   if (!isDate(b.date) || !isTime(b.time)) throw bad('Vyberte deň a čas.');
 
@@ -173,47 +186,47 @@ app.post('/api/bookings', rateLimit(10, 3600e3), (req, res) => {
   if (name.length < 3) throw bad('Zadajte meno a priezvisko.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('Zadajte platný e-mail.');
   if (phone && !/^\+?[\d\s/-]{6,}$/.test(phone)) throw bad('Zadajte platné telefónne číslo.');
+  const clientId = (await currentClient(req))?.id ?? null;
 
-  // node:sqlite je synchrónne, takže kontrola a zápis prebehnú bez súbehu s inou rezerváciou
-  const free = availability(b.date, proc, Number(b.member_id) || null).get(b.time);
-  if (!free) throw new HttpError(409, 'Tento termín už nie je voľný, vyberte prosím iný.');
+  const booking = await serialized(async () => {
+    const free = (await availability(b.date, proc, Number(b.member_id) || null)).get(b.time);
+    if (!free) throw new HttpError(409, 'Tento termín už nie je voľný, vyberte prosím iný.');
 
-  // pri „ktokoľvek“ dostane rezerváciu terapeut s najmenej termínmi v daný deň
-  const load = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE date = ? AND member_id = ? AND status != 'cancelled'");
-  const memberId = free.length
-    ? free.map((id) => [id, load.get(b.date, id).n]).sort((x, y) => x[1] - y[1])[0][0]
-    : null;
-  const memberName = memberId ? db.prepare('SELECT name FROM team_members WHERE id = ?').get(memberId).name : '';
+    // pri „ktokoľvek“ dostane rezerváciu terapeut s najmenej termínmi v daný deň
+    const load = await Promise.all(free.map(async (id) => [id, (await db.get(
+      "SELECT COUNT(*)::int AS n FROM bookings WHERE date = ? AND member_id = ? AND status != 'cancelled'", b.date, id
+    )).n]));
+    const memberId = load.length ? load.sort((x, y) => x[1] - y[1])[0][0] : null;
+    const memberName = memberId ? (await db.get('SELECT name FROM team_members WHERE id = ?', memberId)).name : '';
 
-  const result = db.prepare(`
-    INSERT INTO bookings (procedure_id, procedure_name, duration_min, price, date, time, end_time, name, phone, email, note,
-                          room_id, member_id, member_name, client_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    return db.get(`
+      INSERT INTO bookings (procedure_id, procedure_name, duration_min, price, date, time, end_time, name, phone, email, note,
+                            room_id, member_id, member_name, client_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+    `,
     proc.id, proc.name, proc.duration_min, proc.price, b.date, b.time,
     toTime(toMin(b.time) + proc.duration_min), name, phone, email, note,
-    proc.room_id, memberId, memberName, currentClient(req)?.id ?? null
-  );
-  const id = Number(result.lastInsertRowid);
-  notifyNewBooking(db.prepare('SELECT * FROM bookings WHERE id = ?').get(id));
-  res.status(201).json({ id, member_name: memberName });
+    proc.room_id, memberId, memberName, clientId);
+  });
+  notifyNewBooking(booking);
+  res.status(201).json({ id: booking.id, member_name: booking.member_name });
 });
 
 // ---------- prihlásenie ----------
 
 const tokenHash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const sessionToken = (req) => /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie || '')?.[1];
-const endSession = (token) => token && db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
-const endSessions = (userId) => db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+const endSession = (token) => token && db.run('DELETE FROM sessions WHERE token_hash = ?', tokenHash(token));
+const endSessions = (userId) => db.run('DELETE FROM sessions WHERE user_id = ?', userId);
 
-app.post('/api/admin/login', rateLimit(10, 15 * 60e3), (req, res) => {
-  const user = db.prepare('SELECT id, password_hash FROM users WHERE username = ?').get(str(req.body?.username, 64));
+app.post('/api/admin/login', rateLimit(10, 15 * 60e3), async (req, res) => {
+  const user = await db.get('SELECT id, password_hash FROM users WHERE lower(username) = lower(?)', str(req.body?.username, 64));
   const ok = verifyPassword(String(req.body?.password ?? ''), user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) throw new HttpError(401, 'Nesprávne meno alebo heslo.');
   const token = crypto.randomBytes(32).toString('base64url');
-  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
-  db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(tokenHash(token), user.id, Date.now() + SESSION_MS);
+  await db.run('DELETE FROM sessions WHERE expires_at < ?', Date.now());
+  await db.run('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+    tokenHash(token), user.id, Date.now() + SESSION_MS);
   res.cookie('sid', token, { httpOnly: true, sameSite: 'strict', secure: req.secure, maxAge: SESSION_MS, path: '/' });
   res.json({ ok: true });
 });
@@ -226,35 +239,35 @@ const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 // adresa pre odkaz v e-maile: nastavená adresa webu, inak adresa, na ktorej beží administrácia
 const baseUrl = (req) => getSettings().site_url || `${req.protocol}://${req.get('host')}`;
 
+const accountUser = (userId) => db.get(`
+  SELECT u.id, u.username, u.role, u.email, COALESCE(m.name, NULLIF(u.name, '')) AS member_name
+  FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
+`, userId);
+
 async function sendInvite(req, userId, isNew) {
-  const user = db.prepare(`
-    SELECT u.id, u.username, u.role, u.email, COALESCE(m.name, NULLIF(u.name, '')) AS member_name
-    FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
-  `).get(userId);
+  const user = await accountUser(userId);
   if (!user?.email) throw bad('Používateľ nemá zadaný e-mail.');
   const token = crypto.randomBytes(32).toString('base64url');
-  db.prepare('DELETE FROM password_tokens WHERE user_id = ? OR expires_at < ?').run(user.id, Date.now());
-  db.prepare('INSERT INTO password_tokens (token_hash, user_id, expires_at, kind) VALUES (?, ?, ?, ?)')
-    .run(tokenHash(token), user.id, Date.now() + INVITE_MS, isNew ? 'invite' : 'reset');
+  await db.run('DELETE FROM password_tokens WHERE user_id = ? OR expires_at < ?', user.id, Date.now());
+  await db.run('INSERT INTO password_tokens (token_hash, user_id, expires_at, kind) VALUES (?, ?, ?, ?)',
+    tokenHash(token), user.id, Date.now() + INVITE_MS, isNew ? 'invite' : 'reset');
   // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
   await sendAccountInvite(user, `${baseUrl(req)}/admin/#heslo=${token}`, isNew);
 }
 
-app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), (req, res) => {
+app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), async (req, res) => {
   const { token, password } = req.body ?? {};
   const row = typeof token === 'string' &&
-    db.prepare('SELECT user_id, kind FROM password_tokens WHERE token_hash = ? AND expires_at > ?').get(tokenHash(token), Date.now());
+    await db.get('SELECT user_id, kind FROM password_tokens WHERE token_hash = ? AND expires_at > ?', tokenHash(token), Date.now());
   if (!row) throw bad('Odkaz je neplatný alebo vypršal. Požiadajte admina o nový.');
   if (typeof password !== 'string' || password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), row.user_id);
-  db.prepare('DELETE FROM password_tokens WHERE user_id = ?').run(row.user_id);
-  endSessions(row.user_id);
-  const user = db.prepare(`
-    SELECT u.id, u.username, u.role, u.email, COALESCE(m.name, NULLIF(u.name, '')) AS member_name
-    FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
-  `).get(row.user_id);
+  await db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), row.user_id);
+  await db.run('DELETE FROM password_tokens WHERE user_id = ?', row.user_id);
+  await endSessions(row.user_id);
+  const user = await accountUser(row.user_id);
   // upozornenie pre adminov s e-mailom v účte a pre ADMIN_EMAIL
-  const admins = db.prepare("SELECT email FROM users WHERE role = 'admin' AND email != '' AND id != ?").all(user.id).map((a) => a.email);
+  const admins = (await db.all("SELECT email FROM users WHERE role = 'admin' AND email != '' AND id != ?", user.id))
+    .map((a) => a.email);
   notifyPasswordSet(user, row.kind === 'invite', admins);
   res.json({ username: user.username });
 });
@@ -263,27 +276,27 @@ app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), (req, res) => {
 
 const CLIENT_SESSION_MS = 30 * 24 * 3600e3;
 const clientToken = (req) => /(?:^|;\s*)csid=([\w-]+)/.exec(req.headers.cookie || '')?.[1];
-const clientProfile = (id) => db.prepare('SELECT id, name, email, phone FROM clients WHERE id = ?').get(id);
+const clientProfile = (id) => db.get('SELECT id, name, email, phone FROM clients WHERE id = ?', id);
 
-function currentClient(req) {
+async function currentClient(req) {
   const token = clientToken(req);
-  return token && db.prepare(`
+  return token && db.get(`
     SELECT c.id, c.name, c.email, c.phone FROM client_sessions s JOIN clients c ON c.id = s.client_id
     WHERE s.token_hash = ? AND s.expires_at > ?
-  `).get(tokenHash(token), Date.now());
+  `, tokenHash(token), Date.now());
 }
 
-function requireClient(req) {
-  const client = currentClient(req);
+async function requireClient(req) {
+  const client = await currentClient(req);
   if (!client) throw new HttpError(401, 'Prihláste sa, prosím.');
   return client;
 }
 
-function startClientSession(req, res, clientId) {
+async function startClientSession(req, res, clientId) {
   const token = crypto.randomBytes(32).toString('base64url');
-  db.prepare('DELETE FROM client_sessions WHERE expires_at < ?').run(Date.now());
-  db.prepare('INSERT INTO client_sessions (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
-    .run(tokenHash(token), clientId, Date.now() + CLIENT_SESSION_MS);
+  await db.run('DELETE FROM client_sessions WHERE expires_at < ?', Date.now());
+  await db.run('INSERT INTO client_sessions (token_hash, client_id, expires_at) VALUES (?, ?, ?)',
+    tokenHash(token), clientId, Date.now() + CLIENT_SESSION_MS);
   res.cookie('csid', token, { httpOnly: true, sameSite: 'strict', secure: req.secure, maxAge: CLIENT_SESSION_MS, path: '/' });
 }
 
@@ -295,106 +308,106 @@ function clientInput(body = {}) {
   return c;
 }
 
-const clientEmailTaken = (email, exceptId = 0) =>
-  !!db.prepare('SELECT 1 FROM clients WHERE email = ? AND id != ?').get(email, exceptId);
+const clientEmailTaken = async (email, exceptId = 0) =>
+  !!(await db.get('SELECT 1 FROM clients WHERE lower(email) = lower(?) AND id != ?', email, exceptId));
 
 // registrácia je možná len so súhlasom so spracúvaním osobných údajov (GDPR, zákon č. 18/2018 Z. z.)
-app.post('/api/client/register', rateLimit(5, 3600e3), (req, res) => {
+app.post('/api/client/register', rateLimit(5, 3600e3), async (req, res) => {
   const body = req.body ?? {};
   if (body.gdpr !== true) throw bad('Bez súhlasu so spracúvaním osobných údajov sa nie je možné zaregistrovať.');
   const c = clientInput(body);
   if (typeof body.password !== 'string' || body.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
-  const existing = db.prepare('SELECT id, verified_at FROM clients WHERE email = ?').get(c.email);
+  const existing = await db.get('SELECT id, verified_at FROM clients WHERE lower(email) = lower(?)', c.email);
   if (existing?.verified_at) throw new HttpError(409, 'Účet s týmto e-mailom už existuje – prihláste sa.');
   let id = existing?.id;
   // nepotvrdený účet s rovnakým e-mailom (napr. stratený e-mail s odkazom) sa prepíše novými údajmi
   if (id) {
-    db.prepare(`UPDATE clients SET password_hash = ?, name = ?, phone = ?, gdpr_consent_at = datetime('now') WHERE id = ?`)
-      .run(hashPassword(body.password), c.name, c.phone, id);
+    await db.run('UPDATE clients SET password_hash = ?, name = ?, phone = ?, gdpr_consent_at = now() WHERE id = ?',
+      hashPassword(body.password), c.name, c.phone, id);
   } else {
-    id = Number(db.prepare(`
-      INSERT INTO clients (email, password_hash, name, phone, gdpr_consent_at) VALUES (?, ?, ?, ?, datetime('now'))
-    `).run(c.email, hashPassword(body.password), c.name, c.phone).lastInsertRowid);
+    ({ id } = await db.run(`
+      INSERT INTO clients (email, password_hash, name, phone, gdpr_consent_at) VALUES (?, ?, ?, ?, now()) RETURNING id
+    `, c.email, hashPassword(body.password), c.name, c.phone));
   }
-  sendClientVerification(req, id);
+  await sendClientVerification(req, id);
   res.status(201).json({ email: c.email });
 });
 
 const VERIFY_MS = 3 * 24 * 3600e3;
 
-function sendClientVerification(req, clientId) {
+async function sendClientVerification(req, clientId) {
   const token = crypto.randomBytes(32).toString('base64url');
   // staršie odkazy ostávajú platné – klient môže kliknúť na ktorýkoľvek z prijatých e-mailov
-  db.prepare('DELETE FROM client_tokens WHERE expires_at < ?').run(Date.now());
-  db.prepare('INSERT INTO client_tokens (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
-    .run(tokenHash(token), clientId, Date.now() + VERIFY_MS);
+  await db.run('DELETE FROM client_tokens WHERE expires_at < ?', Date.now());
+  await db.run('INSERT INTO client_tokens (token_hash, client_id, expires_at) VALUES (?, ?, ?)',
+    tokenHash(token), clientId, Date.now() + VERIFY_MS);
   // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
-  notifyClientVerify(clientProfile(clientId), `${baseUrl(req)}/#overenie=${token}`);
+  notifyClientVerify(await clientProfile(clientId), `${baseUrl(req)}/#overenie=${token}`);
 }
 
 // Potvrdenie e-mailu odkazom z registračného e-mailu; pri prvom použití sa klient zároveň prihlási.
 // Odkaz platí až do vypršania: otvorí ho aj skener odkazov v e-maile alebo druhý prehliadač,
 // opakované otvorenie preto len oznámi, že účet je už potvrdený (bez prihlásenia).
-app.post('/api/client/verify', rateLimit(20, 15 * 60e3), (req, res) => {
+app.post('/api/client/verify', rateLimit(20, 15 * 60e3), async (req, res) => {
   const { token } = req.body ?? {};
-  const row = typeof token === 'string' && db.prepare(`
+  const row = typeof token === 'string' && await db.get(`
     SELECT t.client_id, c.verified_at FROM client_tokens t JOIN clients c ON c.id = t.client_id
     WHERE t.token_hash = ? AND t.expires_at > ?
-  `).get(tokenHash(token), Date.now());
+  `, tokenHash(token), Date.now());
   if (!row) throw bad('Odkaz je neplatný alebo vypršal. Prihláste sa e-mailom a heslom a pošleme vám nový.');
   if (row.verified_at) return res.json({ already: true });
-  db.prepare("UPDATE clients SET verified_at = datetime('now') WHERE id = ?").run(row.client_id);
-  startClientSession(req, res, row.client_id);
-  res.json({ client: clientProfile(row.client_id) });
+  await db.run('UPDATE clients SET verified_at = now() WHERE id = ?', row.client_id);
+  await startClientSession(req, res, row.client_id);
+  res.json({ client: await clientProfile(row.client_id) });
 });
 
-app.post('/api/client/login', rateLimit(10, 15 * 60e3), (req, res) => {
-  const client = db.prepare('SELECT id, password_hash, verified_at FROM clients WHERE email = ?').get(str(req.body?.email, 120));
+app.post('/api/client/login', rateLimit(10, 15 * 60e3), async (req, res) => {
+  const client = await db.get('SELECT id, password_hash, verified_at FROM clients WHERE lower(email) = lower(?)',
+    str(req.body?.email, 120));
   const ok = verifyPassword(String(req.body?.password ?? ''), client?.password_hash ?? DUMMY_HASH);
   if (!client || !ok) throw new HttpError(401, 'Nesprávny e-mail alebo heslo.');
   // nepotvrdený účet: pošle sa nový odkaz (starý mohol vypršať alebo sa stratiť)
   if (!client.verified_at) {
-    sendClientVerification(req, client.id);
+    await sendClientVerification(req, client.id);
     throw new HttpError(403, 'Účet ešte nie je potvrdený. Poslali sme vám nový e-mail s odkazom na potvrdenie.');
   }
-  startClientSession(req, res, client.id);
-  res.json(clientProfile(client.id));
+  await startClientSession(req, res, client.id);
+  res.json(await clientProfile(client.id));
 });
 
-app.post('/api/client/logout', (req, res) => {
+app.post('/api/client/logout', async (req, res) => {
   const token = clientToken(req);
-  if (token) db.prepare('DELETE FROM client_sessions WHERE token_hash = ?').run(tokenHash(token));
+  if (token) await db.run('DELETE FROM client_sessions WHERE token_hash = ?', tokenHash(token));
   res.clearCookie('csid', { path: '/' });
   res.json({ ok: true });
 });
 
 // neprihlásený návštevník dostane null, nie chybu
-app.get('/api/client/me', (req, res) => res.json(currentClient(req) || null));
+app.get('/api/client/me', async (req, res) => res.json((await currentClient(req)) || null));
 
-app.put('/api/client/me', (req, res) => {
-  const { id } = requireClient(req);
+app.put('/api/client/me', async (req, res) => {
+  const { id } = await requireClient(req);
   const c = clientInput(req.body);
-  if (clientEmailTaken(c.email, id)) throw new HttpError(409, 'Tento e-mail už používa iný účet.');
-  db.prepare('UPDATE clients SET name = ?, email = ?, phone = ? WHERE id = ?').run(c.name, c.email, c.phone, id);
-  res.json(clientProfile(id));
+  if (await clientEmailTaken(c.email, id)) throw new HttpError(409, 'Tento e-mail už používa iný účet.');
+  await db.run('UPDATE clients SET name = ?, email = ?, phone = ? WHERE id = ?', c.name, c.email, c.phone, id);
+  res.json(await clientProfile(id));
 });
 
 // rezervácie klienta: urobené z účtu a aj staršie bez účtu na jeho (potvrdený) e-mail
-const OWN_BOOKING = '(client_id = ? OR (client_id IS NULL AND email = ? COLLATE NOCASE))';
+const OWN_BOOKING = '(client_id = ? OR (client_id IS NULL AND lower(email) = lower(?)))';
 
-app.get('/api/client/bookings', (req, res) => {
-  const { id, email } = requireClient(req);
-  res.json(db.prepare(`
+app.get('/api/client/bookings', async (req, res) => {
+  const { id, email } = await requireClient(req);
+  res.json(await db.all(`
     SELECT id, procedure_name, date, time, end_time, duration_min, price, status, member_name, note, cancel_reason FROM bookings
     WHERE ${OWN_BOOKING} ORDER BY date, time LIMIT 1000
-  `).all(id, email));
+  `, id, email));
 });
 
 // zrušenie termínu klientom: povinný dôvod, ktorý dostane admin a priradený terapeut
-app.post('/api/client/bookings/:id/cancel', rateLimit(20, 3600e3), (req, res) => {
-  const client = requireClient(req);
-  const booking = db.prepare(`SELECT * FROM bookings WHERE id = ? AND ${OWN_BOOKING}`)
-    .get(Number(req.params.id), client.id, client.email);
+app.post('/api/client/bookings/:id/cancel', rateLimit(20, 3600e3), async (req, res) => {
+  const client = await requireClient(req);
+  const booking = await db.get(`SELECT * FROM bookings WHERE id = ? AND ${OWN_BOOKING}`, num(req.params.id), client.id, client.email);
   if (!booking) throw new HttpError(404, 'Rezervácia neexistuje.');
   if (!['new', 'confirmed'].includes(booking.status)) throw bad('Túto rezerváciu už nie je možné zrušiť.');
   const now = localNow();
@@ -404,11 +417,15 @@ app.post('/api/client/bookings/:id/cancel', rateLimit(20, 3600e3), (req, res) =>
   const reason = str(req.body?.reason, 1000);
   if (reason.length < 5) throw bad('Napíšte prosím, prečo termín rušíte (aspoň pár slov).');
 
-  db.prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = ? WHERE id = ?").run(reason, booking.id);
+  // podmienka na stav chráni pred súbežnou zmenou (napr. admin práve termín dokončil)
+  const { changes } = await db.run(
+    "UPDATE bookings SET status = 'cancelled', cancel_reason = ? WHERE id = ? AND status IN ('new', 'confirmed')", reason, booking.id
+  );
+  if (!changes) throw bad('Túto rezerváciu už nie je možné zrušiť.');
   const cancelled = { ...booking, status: 'cancelled', cancel_reason: reason };
-  const admins = db.prepare("SELECT email FROM users WHERE role = 'admin' AND email != ''").all().map((u) => u.email);
+  const admins = (await db.all("SELECT email FROM users WHERE role = 'admin' AND email != ''")).map((u) => u.email);
   const therapists = booking.member_id
-    ? db.prepare("SELECT email FROM users WHERE member_id = ? AND email != ''").all(booking.member_id).map((u) => u.email)
+    ? (await db.all("SELECT email FROM users WHERE member_id = ? AND email != ''", booking.member_id)).map((u) => u.email)
     : [];
   notifyClientCancelled(cancelled, [...admins, ...therapists]);
   notifyStatus(cancelled, 'cancelled');
@@ -416,24 +433,24 @@ app.post('/api/client/bookings/:id/cancel', rateLimit(20, 3600e3), (req, res) =>
 });
 
 // zrušenie účtu = odvolanie súhlasu; údaje účtu sa vymažú, rezervácie ostanú bez väzby na účet
-app.delete('/api/client/me', rateLimit(10, 15 * 60e3), (req, res) => {
-  const { id } = requireClient(req);
-  const { password_hash } = db.prepare('SELECT password_hash FROM clients WHERE id = ?').get(id);
+app.delete('/api/client/me', rateLimit(10, 15 * 60e3), async (req, res) => {
+  const { id } = await requireClient(req);
+  const { password_hash } = await db.get('SELECT password_hash FROM clients WHERE id = ?', id);
   if (!verifyPassword(String(req.body?.password ?? ''), password_hash)) throw bad('Heslo nie je správne.');
-  db.prepare('DELETE FROM clients WHERE id = ?').run(id);
+  await db.run('DELETE FROM clients WHERE id = ?', id);
   res.clearCookie('csid', { path: '/' });
   res.json({ ok: true });
 });
 
-app.use('/api/admin', (req, res, next) => {
+app.use('/api/admin', async (req, res, next) => {
   const token = sessionToken(req);
-  const user = token && db.prepare(`
+  const user = token && await db.get(`
     SELECT u.id, u.username, u.role, u.member_id, m.name AS member_name
     FROM sessions s JOIN users u ON u.id = s.user_id LEFT JOIN team_members m ON m.id = u.member_id
     WHERE s.token_hash = ? AND s.expires_at > ?
-  `).get(tokenHash(token), Date.now());
+  `, tokenHash(token), Date.now());
   if (!user) {
-    endSession(token);
+    await endSession(token);
     throw new HttpError(401, 'Neprihlásený.');
   }
   req.user = user;
@@ -450,19 +467,19 @@ app.use(
 );
 
 // Profil: meno a fotka člena tímu (zobrazujú sa na webe), inak vlastné z účtu
-function profile(userId) {
-  const p = db.prepare(`
+async function profile(userId) {
+  const p = await db.get(`
     SELECT u.id, u.username, u.role, u.member_id, u.email, u.phone, m.name AS member_name,
            COALESCE(m.name, u.name) AS name, COALESCE(m.photo, u.photo) AS photo
     FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
-  `).get(userId);
+  `, userId);
   return { ...p, photo: p.photo ? `/media/${p.photo}` : '' };
 }
 
-app.get('/api/admin/me', (req, res) => res.json(profile(req.user.id)));
+app.get('/api/admin/me', async (req, res) => res.json(await profile(req.user.id)));
 
 // photo: data URL = nová fotka, null = odstrániť, čokoľvek iné = ponechať
-app.put('/api/admin/me/profile', (req, res) => {
+app.put('/api/admin/me/profile', async (req, res) => {
   const body = req.body ?? {};
   const name = str(body.name, 100);
   const email = str(body.email, 120);
@@ -471,41 +488,36 @@ app.put('/api/admin/me/profile', (req, res) => {
   if (email && !isEmail(email)) throw bad('Zadajte platný e-mail.');
   if (phone && !/^\+?[\d\s/-]{6,}$/.test(phone)) throw bad('Zadajte platné telefónne číslo.');
 
-  const user = db.prepare(`
+  const user = await db.get(`
     SELECT u.photo, m.id AS member_id, m.photo AS member_photo FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
-  `).get(req.user.id);
+  `, req.user.id);
   const linked = user.member_id != null;
   const current = linked ? user.member_photo : user.photo;
   let photo = current;
   if (isNewPhoto(body.photo)) photo = savePhoto(body.photo);
   else if (body.photo === null) photo = '';
 
-  db.exec('BEGIN');
-  try {
-    if (linked) db.prepare('UPDATE team_members SET name = ?, photo = ? WHERE id = ?').run(name, photo, user.member_id);
-    db.prepare('UPDATE users SET name = ?, email = ?, phone = ?, photo = ? WHERE id = ?')
-      .run(name, email, phone, linked ? user.photo : photo, req.user.id);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+  await db.tx(async (t) => {
+    if (linked) await t.run('UPDATE team_members SET name = ?, photo = ? WHERE id = ?', name, photo, user.member_id);
+    await t.run('UPDATE users SET name = ?, email = ?, phone = ?, photo = ? WHERE id = ?',
+      name, email, phone, linked ? user.photo : photo, req.user.id);
+  });
   if (photo !== current) removePhoto(current);
-  res.json(profile(req.user.id));
+  res.json(await profile(req.user.id));
 });
 
-app.post('/api/admin/logout', (req, res) => {
-  endSession(sessionToken(req));
+app.post('/api/admin/logout', async (req, res) => {
+  await endSession(sessionToken(req));
   res.clearCookie('sid', { path: '/' });
   res.json({ ok: true });
 });
 
-app.put('/api/admin/me/password', (req, res) => {
+app.put('/api/admin/me/password', async (req, res) => {
   const { current, password } = req.body ?? {};
-  const { password_hash } = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+  const { password_hash } = await db.get('SELECT password_hash FROM users WHERE id = ?', req.user.id);
   if (!verifyPassword(String(current ?? ''), password_hash)) throw bad('Súčasné heslo nie je správne.');
   if (typeof password !== 'string' || password.length < 8) throw bad('Nové heslo musí mať aspoň 8 znakov.');
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), req.user.id);
+  await db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), req.user.id);
   res.json({ ok: true });
 });
 
@@ -514,19 +526,19 @@ app.put('/api/admin/me/password', (req, res) => {
 // podmienka, ktorá obmedzí rezervácie na prihláseného terapeuta
 const ownScope = (req) => (isAdmin(req) ? ['1 = 1', []] : ['b.member_id = ?', [req.user.member_id ?? -1]]);
 
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', async (req, res) => {
   const today = localNow().date;
   const [scope, scopeParams] = ownScope(req);
-  const count = (sql, ...params) =>
-    db.prepare(`SELECT COUNT(*) AS n FROM bookings b WHERE ${scope} AND ${sql}`).get(...scopeParams, ...params).n;
+  const count = async (sql, ...params) =>
+    (await db.get(`SELECT COUNT(*)::int AS n FROM bookings b WHERE ${scope} AND ${sql}`, ...scopeParams, ...params)).n;
   res.json({
-    today: count("date = ? AND status != 'cancelled'", today),
-    upcoming: count("date >= ? AND status IN ('new', 'confirmed')", today),
-    pending: count("date >= ? AND status = 'new'", today),
+    today: await count("date = ? AND status != 'cancelled'", today),
+    upcoming: await count("date >= ? AND status IN ('new', 'confirmed')", today),
+    pending: await count("date >= ? AND status = 'new'", today),
   });
 });
 
-app.get('/api/admin/bookings', (req, res) => {
+app.get('/api/admin/bookings', async (req, res) => {
   const today = localNow().date;
   const [scope, scopeParams] = ownScope(req);
   const where = [scope];
@@ -549,85 +561,84 @@ app.get('/api/admin/bookings', (req, res) => {
   }
   if (isAdmin(req) && req.query.member) {
     if (req.query.member === 'none') where.push('b.member_id IS NULL');
-    else { where.push('b.member_id = ?'); params.push(Number(req.query.member)); }
+    else { where.push('b.member_id = ?'); params.push(num(req.query.member)); }
   }
   const order = req.query.range === 'past' ? 'DESC' : 'ASC';
-  res.json(
-    db.prepare(`
-      SELECT b.*, r.name AS room_name FROM bookings b LEFT JOIN rooms r ON r.id = b.room_id
-      WHERE ${where.join(' AND ')}
-      ORDER BY b.date ${order}, b.time ${order} LIMIT 500
-    `).all(...params)
-  );
+  res.json(await db.all(`
+    SELECT b.*, r.name AS room_name FROM bookings b LEFT JOIN rooms r ON r.id = b.room_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY b.date ${order}, b.time ${order} LIMIT 500
+  `, ...params));
 });
 
-app.patch('/api/admin/bookings/:id', (req, res) => {
+app.patch('/api/admin/bookings/:id', async (req, res) => {
   const body = req.body ?? {};
-  const booking = db.prepare('SELECT * FROM bookings WHERE id = ?').get(Number(req.params.id));
-  if (!booking || (!isAdmin(req) && booking.member_id !== req.user.member_id)) {
-    throw new HttpError(404, 'Rezervácia neexistuje.');
-  }
-
-  if ('member_id' in body) {
-    if (!isAdmin(req)) throw new HttpError(403, 'Preradiť rezerváciu môže len admin.');
-    const member = body.member_id == null ? null : db.prepare('SELECT id, name FROM team_members WHERE id = ?').get(Number(body.member_id));
-    if (body.member_id != null && !member) throw bad('Neznámy člen tímu.');
-    if (member && booking.status !== 'cancelled' && hasClash(booking, member.id)) {
-      throw new HttpError(409, `${member.name} má v tomto čase inú rezerváciu.`);
+  await serialized(async () => {
+    const booking = await db.get('SELECT * FROM bookings WHERE id = ?', num(req.params.id));
+    if (!booking || (!isAdmin(req) && booking.member_id !== req.user.member_id)) {
+      throw new HttpError(404, 'Rezervácia neexistuje.');
     }
-    db.prepare('UPDATE bookings SET member_id = ?, member_name = ? WHERE id = ?').run(member?.id ?? null, member?.name ?? '', booking.id);
-    // potvrdený termín preradený inému terapeutovi – nový terapeut dostane upozornenie
-    if (member && member.id !== booking.member_id && booking.status === 'confirmed') {
-      notifyMember({ ...booking, member_id: member.id, member_name: member.name }, 'assigned');
-    }
-    return res.json({ ok: true });
-  }
 
-  const { status } = body;
-  if (!STATUSES.includes(status)) throw bad('Neplatný stav.');
-  // obnovenie zrušenej rezervácie nesmie prekryť iný termín
-  if (booking.status === 'cancelled' && status !== 'cancelled' && hasClash(booking, booking.member_id)) {
-    throw new HttpError(409, 'Termín je medzitým obsadený inou rezerváciou.');
-  }
-  // dôvod zrušenia od klienta platí len kým je rezervácia zrušená
-  db.prepare("UPDATE bookings SET status = ?, cancel_reason = CASE WHEN ? = 'cancelled' THEN cancel_reason ELSE '' END WHERE id = ?")
-    .run(status, status, booking.id);
-  if (booking.status !== status) notifyStatus(booking, status);
-  // terapeut dostane upozornenie, keď mu rezerváciu potvrdí niekto iný (admin)
-  if (status === 'confirmed' && booking.status !== 'confirmed' && booking.member_id && booking.member_id !== req.user.member_id) {
-    notifyMember(booking, 'confirmed');
-  }
+    if ('member_id' in body) {
+      if (!isAdmin(req)) throw new HttpError(403, 'Preradiť rezerváciu môže len admin.');
+      const member = body.member_id == null ? null : await db.get('SELECT id, name FROM team_members WHERE id = ?', num(body.member_id));
+      if (body.member_id != null && !member) throw bad('Neznámy člen tímu.');
+      if (member && booking.status !== 'cancelled' && await hasClash(booking, member.id)) {
+        throw new HttpError(409, `${member.name} má v tomto čase inú rezerváciu.`);
+      }
+      await db.run('UPDATE bookings SET member_id = ?, member_name = ? WHERE id = ?', member?.id ?? null, member?.name ?? '', booking.id);
+      // potvrdený termín preradený inému terapeutovi – nový terapeut dostane upozornenie
+      if (member && member.id !== booking.member_id && booking.status === 'confirmed') {
+        await notifyMember({ ...booking, member_id: member.id, member_name: member.name }, 'assigned');
+      }
+      return;
+    }
+
+    const { status } = body;
+    if (!STATUSES.includes(status)) throw bad('Neplatný stav.');
+    // obnovenie zrušenej rezervácie nesmie prekryť iný termín
+    if (booking.status === 'cancelled' && status !== 'cancelled' && await hasClash(booking, booking.member_id)) {
+      throw new HttpError(409, 'Termín je medzitým obsadený inou rezerváciou.');
+    }
+    // dôvod zrušenia od klienta platí len kým je rezervácia zrušená
+    await db.run("UPDATE bookings SET status = ?, cancel_reason = CASE WHEN ?::text = 'cancelled' THEN cancel_reason ELSE '' END WHERE id = ?",
+      status, status, booking.id);
+    if (booking.status !== status) notifyStatus(booking, status);
+    // terapeut dostane upozornenie, keď mu rezerváciu potvrdí niekto iný (admin)
+    if (status === 'confirmed' && booking.status !== 'confirmed' && booking.member_id && booking.member_id !== req.user.member_id) {
+      await notifyMember(booking, 'confirmed');
+    }
+  });
   res.json({ ok: true });
 });
 
 // e-mail terapeutovi: na všetky účty napojené na člena tímu, ktoré majú vyplnený e-mail
-function notifyMember(booking, kind) {
-  const emails = db.prepare("SELECT email FROM users WHERE member_id = ? AND email != ''").all(booking.member_id).map((u) => u.email);
+async function notifyMember(booking, kind) {
+  const emails = (await db.all("SELECT email FROM users WHERE member_id = ? AND email != ''", booking.member_id)).map((u) => u.email);
   if (!emails.length) return;
-  const room = booking.room_id && db.prepare('SELECT name FROM rooms WHERE id = ?').get(booking.room_id);
+  const room = booking.room_id && await db.get('SELECT name FROM rooms WHERE id = ?', booking.room_id);
   notifyTherapist({ ...booking, room_name: room?.name ?? '' }, emails, kind);
 }
 
-app.delete('/api/admin/bookings/:id', (req, res) => {
+app.delete('/api/admin/bookings/:id', async (req, res) => {
   if (!isAdmin(req)) throw new HttpError(403, 'Vymazať rezerváciu môže len admin.');
-  db.prepare('DELETE FROM bookings WHERE id = ?').run(Number(req.params.id));
+  await db.run('DELETE FROM bookings WHERE id = ?', num(req.params.id));
   res.json({ ok: true });
 });
 
 // ---------- procedúry a miestnosti (len admin) ----------
 
-app.get('/api/admin/procedures', (req, res) => {
-  const links = db.prepare(`
+app.get('/api/admin/procedures', async (req, res) => {
+  const links = await db.all(`
     SELECT pm.procedure_id, m.id, m.name FROM procedure_members pm JOIN team_members m ON m.id = pm.member_id ORDER BY m.sort, m.name
-  `).all();
+  `);
   res.json(
-    db.prepare('SELECT p.*, r.name AS room_name FROM procedures p LEFT JOIN rooms r ON r.id = p.room_id ORDER BY p.sort, p.name')
-      .all()
+    (await db.all('SELECT p.*, r.name AS room_name FROM procedures p LEFT JOIN rooms r ON r.id = p.room_id ORDER BY p.sort, p.name'))
       .map((p) => ({ ...p, members: links.filter((l) => l.procedure_id === p.id).map(({ id, name }) => ({ id, name })) }))
   );
 });
 
-function procedureInput(body = {}) {
+async function procedureInput(body = {}) {
   const p = {
     name: str(body.name, 100),
     description: str(body.description, 500),
@@ -635,42 +646,42 @@ function procedureInput(body = {}) {
     price: Math.round(Number(body.price) * 100) / 100,
     icon: ICON_KEYS.includes(body.icon) ? body.icon : 'hand',
     active: body.active ? 1 : 0,
-    sort: Math.round(Number(body.sort)) || 0,
-    room_id: Number(body.room_id),
+    sort: num(Math.round(Number(body.sort)) || 0),
+    room_id: num(body.room_id),
   };
   if (!p.name) throw bad('Zadajte názov procedúry.');
   if (!(p.duration_min >= 5 && p.duration_min <= 480)) throw bad('Trvanie musí byť 5 – 480 minút.');
-  if (!(p.price >= 0)) throw bad('Zadajte platnú cenu.');
-  if (!db.prepare('SELECT 1 FROM rooms WHERE id = ?').get(p.room_id)) throw bad('Vyberte miestnosť.');
+  if (!(p.price >= 0 && p.price < 1e6)) throw bad('Zadajte platnú cenu.');
+  if (!(await db.get('SELECT 1 FROM rooms WHERE id = ?', p.room_id))) throw bad('Vyberte miestnosť.');
   return p;
 }
 
-app.post('/api/admin/procedures', (req, res) => {
-  const p = procedureInput(req.body);
-  const result = db.prepare(`
-    INSERT INTO procedures (name, description, duration_min, price, icon, active, sort, room_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(p.name, p.description, p.duration_min, p.price, p.icon, p.active, p.sort, p.room_id);
-  res.status(201).json({ id: Number(result.lastInsertRowid) });
+app.post('/api/admin/procedures', async (req, res) => {
+  const p = await procedureInput(req.body);
+  const { id } = await db.run(`
+    INSERT INTO procedures (name, description, duration_min, price, icon, active, sort, room_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+  `, p.name, p.description, p.duration_min, p.price, p.icon, p.active, p.sort, p.room_id);
+  res.status(201).json({ id });
 });
 
-app.put('/api/admin/procedures/:id', (req, res) => {
-  const p = procedureInput(req.body);
-  const result = db.prepare(`
+app.put('/api/admin/procedures/:id', async (req, res) => {
+  const p = await procedureInput(req.body);
+  const result = await db.run(`
     UPDATE procedures SET name = ?, description = ?, duration_min = ?, price = ?, icon = ?, active = ?, sort = ?, room_id = ? WHERE id = ?
-  `).run(p.name, p.description, p.duration_min, p.price, p.icon, p.active, p.sort, p.room_id, Number(req.params.id));
+  `, p.name, p.description, p.duration_min, p.price, p.icon, p.active, p.sort, p.room_id, num(req.params.id));
   if (!result.changes) throw new HttpError(404, 'Procedúra neexistuje.');
   res.json({ ok: true });
 });
 
-app.delete('/api/admin/procedures/:id', (req, res) => {
-  db.prepare('DELETE FROM procedures WHERE id = ?').run(Number(req.params.id));
+app.delete('/api/admin/procedures/:id', async (req, res) => {
+  await db.run('DELETE FROM procedures WHERE id = ?', num(req.params.id));
   res.json({ ok: true });
 });
 
-app.get('/api/admin/rooms', (req, res) => {
-  res.json(db.prepare(`
-    SELECT r.id, r.name, (SELECT COUNT(*) FROM procedures p WHERE p.room_id = r.id) AS procedures FROM rooms r ORDER BY r.name
-  `).all());
+app.get('/api/admin/rooms', async (req, res) => {
+  res.json(await db.all(`
+    SELECT r.id, r.name, (SELECT COUNT(*)::int FROM procedures p WHERE p.room_id = r.id) AS procedures FROM rooms r ORDER BY r.name
+  `));
 });
 
 const roomName = (body) => {
@@ -679,33 +690,33 @@ const roomName = (body) => {
   return name;
 };
 
-app.post('/api/admin/rooms', (req, res) => {
-  const result = db.prepare('INSERT INTO rooms (name) VALUES (?)').run(roomName(req.body));
-  res.status(201).json({ id: Number(result.lastInsertRowid) });
+app.post('/api/admin/rooms', async (req, res) => {
+  const { id } = await db.run('INSERT INTO rooms (name) VALUES (?) RETURNING id', roomName(req.body));
+  res.status(201).json({ id });
 });
 
-app.put('/api/admin/rooms/:id', (req, res) => {
-  if (!db.prepare('UPDATE rooms SET name = ? WHERE id = ?').run(roomName(req.body), Number(req.params.id)).changes) {
+app.put('/api/admin/rooms/:id', async (req, res) => {
+  if (!(await db.run('UPDATE rooms SET name = ? WHERE id = ?', roomName(req.body), num(req.params.id))).changes) {
     throw new HttpError(404, 'Miestnosť neexistuje.');
   }
   res.json({ ok: true });
 });
 
-app.delete('/api/admin/rooms/:id', (req, res) => {
-  if (db.prepare('SELECT 1 FROM procedures WHERE room_id = ?').get(Number(req.params.id))) {
+app.delete('/api/admin/rooms/:id', async (req, res) => {
+  if (await db.get('SELECT 1 FROM procedures WHERE room_id = ?', num(req.params.id))) {
     throw new HttpError(409, 'Miestnosť používajú procedúry – najprv im nastavte inú.');
   }
-  db.prepare('DELETE FROM rooms WHERE id = ?').run(Number(req.params.id));
+  await db.run('DELETE FROM rooms WHERE id = ?', num(req.params.id));
   res.json({ ok: true });
 });
 
 // ---------- tím (len admin) ----------
 
-app.get('/api/admin/team', (req, res) => {
-  const links = db.prepare('SELECT procedure_id, member_id FROM procedure_members').all();
-  const logins = db.prepare('SELECT username, member_id FROM users WHERE member_id IS NOT NULL').all();
+app.get('/api/admin/team', async (req, res) => {
+  const links = await db.all('SELECT procedure_id, member_id FROM procedure_members');
+  const logins = await db.all('SELECT username, member_id FROM users WHERE member_id IS NOT NULL');
   res.json(
-    db.prepare('SELECT * FROM team_members ORDER BY sort, name').all().map((m) => ({
+    (await db.all('SELECT * FROM team_members ORDER BY sort, name')).map((m) => ({
       ...m,
       photo: m.photo ? `/media/${m.photo}` : '',
       procedures: links.filter((l) => l.member_id === m.id).map((l) => l.procedure_id),
@@ -731,84 +742,78 @@ function memberInput(body = {}) {
     name: str(body.name, 100),
     title: str(body.title, 100),
     active: body.active ? 1 : 0,
-    sort: Math.round(Number(body.sort)) || 0,
+    sort: num(Math.round(Number(body.sort)) || 0),
     procedures: ids(body.procedures),
   };
   if (m.name.length < 2) throw bad('Zadajte meno.');
   return m;
 }
 
-function saveMember(id, m, photo) {
-  db.exec('BEGIN');
-  try {
-    if (id) {
-      db.prepare('UPDATE team_members SET name = ?, title = ?, active = ?, sort = ?, photo = ? WHERE id = ?')
-        .run(m.name, m.title, m.active, m.sort, photo, id);
-    } else {
-      id = Number(db.prepare('INSERT INTO team_members (name, title, active, sort, photo) VALUES (?, ?, ?, ?, ?)')
-        .run(m.name, m.title, m.active, m.sort, photo).lastInsertRowid);
-    }
-    db.prepare('DELETE FROM procedure_members WHERE member_id = ?').run(id);
-    const link = db.prepare('INSERT INTO procedure_members (procedure_id, member_id) SELECT id, ? FROM procedures WHERE id = ?');
-    for (const procedureId of m.procedures) link.run(id, procedureId);
-    db.exec('COMMIT');
-    return id;
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
+const saveMember = (id, m, photo) => db.tx(async (t) => {
+  if (id) {
+    await t.run('UPDATE team_members SET name = ?, title = ?, active = ?, sort = ?, photo = ? WHERE id = ?',
+      m.name, m.title, m.active, m.sort, photo, id);
+  } else {
+    ({ id } = await t.run('INSERT INTO team_members (name, title, active, sort, photo) VALUES (?, ?, ?, ?, ?) RETURNING id',
+      m.name, m.title, m.active, m.sort, photo));
   }
-}
+  await t.run('DELETE FROM procedure_members WHERE member_id = ?', id);
+  for (const procedureId of m.procedures) {
+    await t.run('INSERT INTO procedure_members (procedure_id, member_id) SELECT id, ?::int FROM procedures WHERE id = ?', id, procedureId);
+  }
+  return id;
+});
 
-app.post('/api/admin/team', (req, res) => {
+app.post('/api/admin/team', async (req, res) => {
   const m = memberInput(req.body);
   const photo = isNewPhoto(req.body.photo) ? savePhoto(req.body.photo) : '';
-  res.status(201).json({ id: saveMember(null, m, photo) });
+  res.status(201).json({ id: await saveMember(null, m, photo) });
 });
 
 // photo: data URL = nová fotka, null = odstrániť, čokoľvek iné = ponechať
-app.put('/api/admin/team/:id', (req, res) => {
-  const current = db.prepare('SELECT * FROM team_members WHERE id = ?').get(Number(req.params.id));
+app.put('/api/admin/team/:id', async (req, res) => {
+  const current = await db.get('SELECT * FROM team_members WHERE id = ?', num(req.params.id));
   if (!current) throw new HttpError(404, 'Člen tímu neexistuje.');
   const m = memberInput(req.body);
   let photo = current.photo;
   if (isNewPhoto(req.body.photo)) photo = savePhoto(req.body.photo);
   else if (req.body.photo === null) photo = '';
-  saveMember(current.id, m, photo);
+  await saveMember(current.id, m, photo);
   if (photo !== current.photo) removePhoto(current.photo);
   res.json({ ok: true });
 });
 
-app.delete('/api/admin/team/:id', (req, res) => {
-  const member = db.prepare('SELECT * FROM team_members WHERE id = ?').get(Number(req.params.id));
+app.delete('/api/admin/team/:id', async (req, res) => {
+  const member = await db.get('SELECT * FROM team_members WHERE id = ?', num(req.params.id));
   if (!member) return res.json({ ok: true });
-  if (db.prepare("SELECT 1 FROM users WHERE member_id = ? AND role = 'solver'").get(member.id)) {
+  if (await db.get("SELECT 1 FROM users WHERE member_id = ? AND role = 'solver'", member.id)) {
     throw new HttpError(409, 'Člen tímu má prihlasovací účet terapeuta – najprv ho vymažte v Používateľoch.');
   }
-  db.prepare('DELETE FROM team_members WHERE id = ?').run(member.id);
+  await db.run('DELETE FROM team_members WHERE id = ?', member.id);
   removePhoto(member.photo);
   res.json({ ok: true });
 });
 
 // ---------- používatelia (len admin) ----------
 
-app.get('/api/admin/users', (req, res) => {
-  res.json(db.prepare(`
+app.get('/api/admin/users', async (req, res) => {
+  res.json(await db.all(`
     SELECT u.id, u.username, u.email, u.phone, u.role, u.member_id, COALESCE(m.name, NULLIF(u.name, '')) AS member_name, u.created_at
     FROM users u LEFT JOIN team_members m ON m.id = u.member_id ORDER BY u.role, u.username
-  `).all());
+  `));
 });
 
-function userInput(body = {}, isNew) {
+async function userInput(body = {}, isNew) {
   const u = {
     username: str(body.username, 32),
     role: body.role,
-    member_id: body.member_id ? Number(body.member_id) : null,
+    member_id: body.member_id ? num(body.member_id) : null,
     email: str(body.email, 120),
     password: typeof body.password === 'string' ? body.password : '',
   };
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(u.username)) throw bad('Prihlasovacie meno: 3 – 32 znakov (písmená bez diakritiky, čísla, . _ -).');
   if (!ROLES.includes(u.role)) throw bad('Neplatná rola.');
-  if (u.member_id && !db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(u.member_id)) throw bad('Neznámy člen tímu.');
+  if (u.member_id && !(await db.get('SELECT 1 FROM team_members WHERE id = ?', u.member_id))) throw bad('Neznámy člen tímu.');
   if (u.role === 'solver' && !u.member_id) throw bad('Terapeut musí byť priradený k členovi tímu.');
   if (u.email && !isEmail(u.email)) throw bad('Zadajte platný e-mail.');
   if (isNew && !u.password && !u.email) throw bad('Zadajte heslo alebo e-mail, na ktorý príde odkaz na nastavenie hesla.');
@@ -816,18 +821,17 @@ function userInput(body = {}, isNew) {
   return u;
 }
 
-const usernameTaken = (username, exceptId = 0) =>
-  !!db.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').get(username, exceptId);
-const adminCount = () => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
+const usernameTaken = async (username, exceptId = 0) =>
+  !!(await db.get('SELECT 1 FROM users WHERE lower(username) = lower(?) AND id != ?', username, exceptId));
+const adminCount = async () => (await db.get("SELECT COUNT(*)::int AS n FROM users WHERE role = 'admin'")).n;
 
 // Účet s e-mailom dostane uvítací e-mail s odkazom na nastavenie hesla.
 // Bez zadaného hesla sa dá prihlásiť až po jeho nastavení cez odkaz.
 app.post('/api/admin/users', async (req, res) => {
-  const u = userInput(req.body, true);
-  if (usernameTaken(u.username)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
-  const id = Number(db.prepare('INSERT INTO users (username, password_hash, role, member_id, email) VALUES (?, ?, ?, ?, ?)')
-    .run(u.username, hashPassword(u.password || crypto.randomBytes(24).toString('base64url')), u.role, u.member_id, u.email)
-    .lastInsertRowid);
+  const u = await userInput(req.body, true);
+  if (await usernameTaken(u.username)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
+  const { id } = await db.run('INSERT INTO users (username, password_hash, role, member_id, email) VALUES (?, ?, ?, ?, ?) RETURNING id',
+    u.username, hashPassword(u.password || crypto.randomBytes(24).toString('base64url')), u.role, u.member_id, u.email);
   let mailError = null;
   if (u.email) {
     try {
@@ -841,49 +845,48 @@ app.post('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users/:id/invite', async (req, res) => {
   try {
-    await sendInvite(req, Number(req.params.id), false);
+    await sendInvite(req, num(req.params.id), false);
   } catch (err) {
     throw err instanceof HttpError ? err : bad(`E-mail sa nepodarilo odoslať: ${err.message}`);
   }
   res.json({ ok: true });
 });
 
-app.put('/api/admin/users/:id', (req, res) => {
-  const current = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(req.params.id));
+app.put('/api/admin/users/:id', async (req, res) => {
+  const current = await db.get('SELECT * FROM users WHERE id = ?', num(req.params.id));
   if (!current) throw new HttpError(404, 'Používateľ neexistuje.');
-  const u = userInput(req.body, false);
-  if (usernameTaken(u.username, current.id)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
-  if (current.role === 'admin' && u.role !== 'admin' && adminCount() === 1) throw bad('Musí zostať aspoň jeden admin.');
+  const u = await userInput(req.body, false);
+  if (await usernameTaken(u.username, current.id)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
+  if (current.role === 'admin' && u.role !== 'admin' && (await adminCount()) === 1) throw bad('Musí zostať aspoň jeden admin.');
 
-  db.prepare('UPDATE users SET username = ?, role = ?, member_id = ?, email = ? WHERE id = ?')
-    .run(u.username, u.role, u.member_id, u.email, current.id);
-  if (u.password) db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(u.password), current.id);
+  await db.run('UPDATE users SET username = ?, role = ?, member_id = ?, email = ? WHERE id = ?',
+    u.username, u.role, u.member_id, u.email, current.id);
+  if (u.password) await db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(u.password), current.id);
   // zmena hesla alebo roly odhlási používateľa na ostatných zariadeniach
-  if ((u.password || u.role !== current.role) && current.id !== req.user.id) endSessions(current.id);
+  if ((u.password || u.role !== current.role) && current.id !== req.user.id) await endSessions(current.id);
   res.json({ ok: true });
 });
 
-app.delete('/api/admin/users/:id', (req, res) => {
-  const id = Number(req.params.id);
+app.delete('/api/admin/users/:id', async (req, res) => {
+  const id = num(req.params.id);
   if (id === req.user.id) throw bad('Nemôžete vymazať vlastný účet.');
-  db.prepare('DELETE FROM users WHERE id = ?').run(id);
-  endSessions(id);
+  await db.run('DELETE FROM users WHERE id = ?', id);
   res.json({ ok: true });
 });
 
 // ---------- klienti registrovaní na webe (len admin) ----------
 
-app.get('/api/admin/clients', (req, res) => {
-  res.json(db.prepare(`
+app.get('/api/admin/clients', async (req, res) => {
+  res.json(await db.all(`
     SELECT c.id, c.name, c.email, c.phone, c.gdpr_consent_at, c.created_at, c.verified_at,
-           (SELECT COUNT(*) FROM bookings b WHERE b.client_id = c.id) AS bookings
+           (SELECT COUNT(*)::int FROM bookings b WHERE b.client_id = c.id) AS bookings
     FROM clients c ORDER BY c.created_at DESC
-  `).all());
+  `));
 });
 
 // vymazanie na žiadosť klienta (GDPR); rezervácie ostanú bez väzby na účet
-app.delete('/api/admin/clients/:id', (req, res) => {
-  db.prepare('DELETE FROM clients WHERE id = ?').run(Number(req.params.id));
+app.delete('/api/admin/clients/:id', async (req, res) => {
+  await db.run('DELETE FROM clients WHERE id = ?', num(req.params.id));
   res.json({ ok: true });
 });
 
@@ -903,7 +906,7 @@ app.post('/api/admin/mail/test', async (req, res) => {
   res.json({ ok: true });
 });
 
-app.put('/api/admin/settings', (req, res) => {
+app.put('/api/admin/settings', async (req, res) => {
   const body = req.body ?? {};
   const hours = {};
   for (let d = 0; d < 7; d++) {
@@ -924,7 +927,7 @@ app.put('/api/admin/settings', (req, res) => {
 
   const address = str(body.address, 200).replace(/\s+/g, ' ');
 
-  saveSettings({ hours, slot_step, max_days_ahead, blocked_dates, contact_phone, site_url, address });
+  await saveSettings({ hours, slot_step, max_days_ahead, blocked_dates, contact_phone, site_url, address });
   res.json({ ok: true });
 });
 
