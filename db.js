@@ -95,6 +95,18 @@ const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).a
 if (!hasColumn('users', 'email')) {
   db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''");
 }
+// profil používateľa; pri napojení na člena tímu sa meno a fotka berú z tímu
+if (!hasColumn('users', 'phone')) {
+  db.exec(`
+    ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT '';
+    ALTER TABLE users ADD COLUMN photo TEXT NOT NULL DEFAULT '';
+  `);
+}
+// invite = prvé nastavenie hesla nového účtu, reset = neskôr poslaný odkaz
+if (!hasColumn('password_tokens', 'kind')) {
+  db.exec("ALTER TABLE password_tokens ADD COLUMN kind TEXT NOT NULL DEFAULT 'reset'");
+}
 if (!hasColumn('procedures', 'room_id')) {
   db.exec('ALTER TABLE procedures ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL');
 }

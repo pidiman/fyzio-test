@@ -200,6 +200,22 @@ function sendLater(to, { subject, text, html }, replyTo) {
     .catch((err) => console.error(`E-mail pre ${to} sa nepodarilo odoslať:`, err.message));
 }
 
+export function notifyPasswordSet(user, isNew, adminEmails) {
+  const seen = new Set();
+  const to = [...adminEmails, ADMIN_EMAIL].filter((e) => e && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+  if (!to.length) return;
+  const who = user.member_name ? `${user.member_name} (${user.username})` : user.username;
+  const { url } = contact();
+  sendLater(to.join(', '), {
+    subject: isNew ? `Účet aktivovaný: ${who}` : `Zmena hesla: ${who}`,
+    text: (isNew
+      ? `${who} si nastavil(a) heslo a účet je aktívny. Odteraz sa môže prihlásiť do administrácie.`
+      : `${who} si cez odkaz z e-mailu nastavil(a) nové heslo.`) +
+      `\n\nPrihlásenie: ${user.username}\nRola:       ${ROLE_NAMES[user.role]}\nE-mail:     ${user.email || '—'}` +
+      (url ? `\n\nPoužívatelia v administrácii: ${url}/admin` : ''),
+  });
+}
+
 export function notifyNewBooking(b) {
   sendLater(
     ADMIN_EMAIL,

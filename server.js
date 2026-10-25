@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
-import { mailStatus, sendMail, sendAccountInvite, notifyNewBooking, notifyStatus } from './mail.js';
+import { mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const TIMEZONE = process.env.TIMEZONE || 'Europe/Bratislava';
@@ -148,7 +148,7 @@ const app = express();
 app.set('trust proxy', process.env.TRUST_PROXY || 'loopback, uniquelocal');
 app.disable('x-powered-by');
 // fotky členov tímu idú ako data URL, preto väčší limit len pre túto cestu
-app.use('/api/admin/team', express.json({ limit: '2mb' }));
+app.use(['/api/admin/team', '/api/admin/me/profile'], express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '50kb' }));
 app.use(express.static(path.join(import.meta.dirname, 'public')));
 // názvy súborov sú náhodné, obsah sa pod rovnakým menom nemení
@@ -252,13 +252,14 @@ const baseUrl = (req) => getSettings().site_url || `${req.protocol}://${req.get(
 
 async function sendInvite(req, userId, isNew) {
   const user = db.prepare(`
-    SELECT u.id, u.username, u.role, u.email, m.name AS member_name FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
+    SELECT u.id, u.username, u.role, u.email, COALESCE(m.name, NULLIF(u.name, '')) AS member_name
+    FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
   `).get(userId);
   if (!user?.email) throw bad('Používateľ nemá zadaný e-mail.');
   const token = crypto.randomBytes(32).toString('base64url');
   db.prepare('DELETE FROM password_tokens WHERE user_id = ? OR expires_at < ?').run(user.id, Date.now());
-  db.prepare('INSERT INTO password_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(tokenHash(token), user.id, Date.now() + INVITE_MS);
+  db.prepare('INSERT INTO password_tokens (token_hash, user_id, expires_at, kind) VALUES (?, ?, ?, ?)')
+    .run(tokenHash(token), user.id, Date.now() + INVITE_MS, isNew ? 'invite' : 'reset');
   // token je za # – prehliadač ho neposiela na server ani v hlavičke Referer
   await sendAccountInvite(user, `${baseUrl(req)}/admin/#heslo=${token}`, isNew);
 }
@@ -266,14 +267,20 @@ async function sendInvite(req, userId, isNew) {
 app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), (req, res) => {
   const { token, password } = req.body ?? {};
   const row = typeof token === 'string' &&
-    db.prepare('SELECT user_id FROM password_tokens WHERE token_hash = ? AND expires_at > ?').get(tokenHash(token), Date.now());
+    db.prepare('SELECT user_id, kind FROM password_tokens WHERE token_hash = ? AND expires_at > ?').get(tokenHash(token), Date.now());
   if (!row) throw bad('Odkaz je neplatný alebo vypršal. Požiadajte admina o nový.');
   if (typeof password !== 'string' || password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), row.user_id);
   db.prepare('DELETE FROM password_tokens WHERE user_id = ?').run(row.user_id);
   endSessions(row.user_id);
-  const { username } = db.prepare('SELECT username FROM users WHERE id = ?').get(row.user_id);
-  res.json({ username });
+  const user = db.prepare(`
+    SELECT u.id, u.username, u.role, u.email, COALESCE(m.name, NULLIF(u.name, '')) AS member_name
+    FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
+  `).get(row.user_id);
+  // upozornenie pre adminov s e-mailom v účte a pre ADMIN_EMAIL
+  const admins = db.prepare("SELECT email FROM users WHERE role = 'admin' AND email != '' AND id != ?").all(user.id).map((a) => a.email);
+  notifyPasswordSet(user, row.kind === 'invite', admins);
+  res.json({ username: user.username });
 });
 
 app.use('/api/admin', (req, res, next) => {
@@ -300,7 +307,50 @@ app.use(
   }
 );
 
-app.get('/api/admin/me', (req, res) => res.json(req.user));
+// Profil: meno a fotka člena tímu (zobrazujú sa na webe), inak vlastné z účtu
+function profile(userId) {
+  const p = db.prepare(`
+    SELECT u.id, u.username, u.role, u.member_id, u.email, u.phone, m.name AS member_name,
+           COALESCE(m.name, u.name) AS name, COALESCE(m.photo, u.photo) AS photo
+    FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
+  `).get(userId);
+  return { ...p, photo: p.photo ? `/media/${p.photo}` : '' };
+}
+
+app.get('/api/admin/me', (req, res) => res.json(profile(req.user.id)));
+
+// photo: data URL = nová fotka, null = odstrániť, čokoľvek iné = ponechať
+app.put('/api/admin/me/profile', (req, res) => {
+  const body = req.body ?? {};
+  const name = str(body.name, 100);
+  const email = str(body.email, 120);
+  const phone = str(body.phone, 30);
+  if (name.length < 2) throw bad('Zadajte meno.');
+  if (email && !isEmail(email)) throw bad('Zadajte platný e-mail.');
+  if (phone && !/^\+?[\d\s/-]{6,}$/.test(phone)) throw bad('Zadajte platné telefónne číslo.');
+
+  const user = db.prepare(`
+    SELECT u.photo, m.id AS member_id, m.photo AS member_photo FROM users u LEFT JOIN team_members m ON m.id = u.member_id WHERE u.id = ?
+  `).get(req.user.id);
+  const linked = user.member_id != null;
+  const current = linked ? user.member_photo : user.photo;
+  let photo = current;
+  if (isNewPhoto(body.photo)) photo = savePhoto(body.photo);
+  else if (body.photo === null) photo = '';
+
+  db.exec('BEGIN');
+  try {
+    if (linked) db.prepare('UPDATE team_members SET name = ?, photo = ? WHERE id = ?').run(name, photo, user.member_id);
+    db.prepare('UPDATE users SET name = ?, email = ?, phone = ?, photo = ? WHERE id = ?')
+      .run(name, email, phone, linked ? user.photo : photo, req.user.id);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  if (photo !== current) removePhoto(current);
+  res.json(profile(req.user.id));
+});
 
 app.post('/api/admin/logout', (req, res) => {
   sessions.delete(sessionToken(req));
@@ -577,7 +627,7 @@ app.delete('/api/admin/team/:id', (req, res) => {
 
 app.get('/api/admin/users', (req, res) => {
   res.json(db.prepare(`
-    SELECT u.id, u.username, u.email, u.role, u.member_id, m.name AS member_name, u.created_at
+    SELECT u.id, u.username, u.email, u.phone, u.role, u.member_id, COALESCE(m.name, NULLIF(u.name, '')) AS member_name, u.created_at
     FROM users u LEFT JOIN team_members m ON m.id = u.member_id ORDER BY u.role, u.username
   `).all());
 });

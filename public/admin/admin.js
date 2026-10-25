@@ -79,9 +79,14 @@ $('#reset-form').addEventListener('submit', async (e) => {
   }
 });
 
+function renderMe() {
+  $('#who').textContent = `${me.name || me.username} · ${ROLE[me.role]}`;
+  $('#me').innerHTML = me.photo ? `<img src="${esc(me.photo)}" alt="">` : AVATAR;
+}
+
 async function showApp() {
   me = await api('/api/admin/me');
-  $('#who').textContent = `${me.member_name || me.username} · ${ROLE[me.role]}`;
+  renderMe();
   // terapeut nevidí záložky a filtre určené len adminovi
   document.querySelectorAll('[data-admin]').forEach((el) => { el.hidden = !isAdmin(); });
   $('#login').hidden = true;
@@ -115,7 +120,7 @@ const loaders = {
   team: () => loadTeam(),
   users: () => loadUsers(),
   settings: () => loadSettings(),
-  account: () => {},
+  account: () => loadProfile(),
 };
 
 function openTab(name) {
@@ -502,6 +507,54 @@ $('#users').addEventListener('click', guard(async (e) => {
 }));
 
 // ---------- môj účet ----------
+
+const profileForm = $('#profile-form');
+// fotka profilu: undefined = bez zmeny, null = odstrániť, string = nová fotka (data URL)
+let profilePhoto;
+
+function renderProfilePhoto(src) {
+  $('#profile-photo').innerHTML = src ? `<img src="${esc(src)}" alt="">` : AVATAR;
+  $('#profile-photo-remove').hidden = !src;
+}
+
+function loadProfile() {
+  const f = profileForm.elements;
+  profilePhoto = undefined;
+  f.name.value = me.name || '';
+  f.username.value = me.username;
+  f.email.value = me.email || '';
+  f.phone.value = me.phone || '';
+  renderProfilePhoto(me.photo);
+  $('#profile-hint').textContent = me.member_id
+    ? 'Meno a fotka sa zobrazujú na webe v sekcii Tím. E-mail a telefón vidí len administrácia.'
+    : 'E-mail slúži na odkaz pri zabudnutom hesle a upozornenia.';
+}
+
+$('#me').addEventListener('click', () => openTab('account'));
+
+$('#profile-photo-input').addEventListener('change', guard(async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  profilePhoto = await resizePhoto(file);
+  renderProfilePhoto(profilePhoto);
+}));
+
+$('#profile-photo-remove').addEventListener('click', () => {
+  profilePhoto = null;
+  renderProfilePhoto('');
+});
+
+profileForm.addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const f = profileForm.elements;
+  const body = { name: f.name.value, email: f.email.value, phone: f.phone.value };
+  if (profilePhoto !== undefined) body.photo = profilePhoto;
+  me = await api('/api/admin/me/profile', { method: 'PUT', body });
+  renderMe();
+  loadProfile();
+  toast('Profil uložený');
+}));
 
 $('#password-form').addEventListener('submit', guard(async (e) => {
   e.preventDefault();

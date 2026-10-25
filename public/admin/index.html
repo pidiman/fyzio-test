@@ -38,6 +38,7 @@
     <div class="wrap bar">
       <div class="logo">FYZIO <small id="who">admin</small></div>
       <div class="bar-actions">
+        <button type="button" class="me" id="me" title="Môj profil"></button>
         <a href="/" target="_blank" class="link">Zobraziť web ↗</a>
         <button class="btn btn-ghost btn-sm" id="logout">Odhlásiť</button>
       </div>
@@ -219,6 +220,23 @@
 
     <!-- Môj účet -->
     <section id="tab-account" hidden>
+      <form class="panel form-grid" id="profile-form">
+        <h3 class="full">Môj profil</h3>
+        <p class="muted full" id="profile-hint"></p>
+        <div class="photo-edit full">
+          <div class="photo" id="profile-photo"></div>
+          <div class="photo-actions">
+            <label class="btn btn-ghost btn-sm">Nahrať fotku<input type="file" accept="image/*" id="profile-photo-input" hidden></label>
+            <button type="button" class="btn btn-danger btn-sm" id="profile-photo-remove">Odstrániť fotku</button>
+            <p class="muted">Fotka sa oreže na výšku (3 : 4).</p>
+          </div>
+        </div>
+        <label>Meno a titul *<input name="name" required minlength="2" maxlength="100" autocomplete="name"></label>
+        <label>Prihlasovacie meno<input name="username" disabled></label>
+        <label>E-mail<input name="email" type="email" maxlength="120" autocomplete="email"></label>
+        <label>Telefón<input name="phone" type="tel" maxlength="30" autocomplete="tel" placeholder="+421 9xx xxx xxx"></label>
+        <div class="full form-actions"><button class="btn btn-primary">Uložiť profil</button></div>
+      </form>
       <form class="panel form-grid" id="password-form">
         <h3 class="full">Zmena hesla</h3>
         <label class="full">Súčasné heslo<input name="current" type="password" required autocomplete="current-password"></label>
