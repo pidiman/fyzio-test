@@ -6,7 +6,7 @@ import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
 import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
-  notifyClientVerify,
+  notifyClientVerify, notifyClientCancelled,
 } from './mail.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -380,13 +380,39 @@ app.put('/api/client/me', (req, res) => {
 });
 
 // rezervácie klienta: urobené z účtu a aj staršie bez účtu na jeho (potvrdený) e-mail
+const OWN_BOOKING = '(client_id = ? OR (client_id IS NULL AND email = ? COLLATE NOCASE))';
+
 app.get('/api/client/bookings', (req, res) => {
   const { id, email } = requireClient(req);
   res.json(db.prepare(`
-    SELECT id, procedure_name, date, time, end_time, duration_min, price, status, member_name, note FROM bookings
-    WHERE client_id = ? OR (client_id IS NULL AND email = ? COLLATE NOCASE)
-    ORDER BY date, time LIMIT 1000
+    SELECT id, procedure_name, date, time, end_time, duration_min, price, status, member_name, note, cancel_reason FROM bookings
+    WHERE ${OWN_BOOKING} ORDER BY date, time LIMIT 1000
   `).all(id, email));
+});
+
+// zrušenie termínu klientom: povinný dôvod, ktorý dostane admin a priradený terapeut
+app.post('/api/client/bookings/:id/cancel', rateLimit(20, 3600e3), (req, res) => {
+  const client = requireClient(req);
+  const booking = db.prepare(`SELECT * FROM bookings WHERE id = ? AND ${OWN_BOOKING}`)
+    .get(Number(req.params.id), client.id, client.email);
+  if (!booking) throw new HttpError(404, 'Rezervácia neexistuje.');
+  if (!['new', 'confirmed'].includes(booking.status)) throw bad('Túto rezerváciu už nie je možné zrušiť.');
+  const now = localNow();
+  if (booking.date < now.date || (booking.date === now.date && toMin(booking.time) <= now.min)) {
+    throw bad('Termín už začal alebo prebehol – zrušiť sa nedá.');
+  }
+  const reason = str(req.body?.reason, 1000);
+  if (reason.length < 5) throw bad('Napíšte prosím, prečo termín rušíte (aspoň pár slov).');
+
+  db.prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = ? WHERE id = ?").run(reason, booking.id);
+  const cancelled = { ...booking, status: 'cancelled', cancel_reason: reason };
+  const admins = db.prepare("SELECT email FROM users WHERE role = 'admin' AND email != ''").all().map((u) => u.email);
+  const therapists = booking.member_id
+    ? db.prepare("SELECT email FROM users WHERE member_id = ? AND email != ''").all(booking.member_id).map((u) => u.email)
+    : [];
+  notifyClientCancelled(cancelled, [...admins, ...therapists]);
+  notifyStatus(cancelled, 'cancelled');
+  res.json({ ok: true });
 });
 
 // zrušenie účtu = odvolanie súhlasu; údaje účtu sa vymažú, rezervácie ostanú bez väzby na účet
@@ -563,7 +589,9 @@ app.patch('/api/admin/bookings/:id', (req, res) => {
   if (booking.status === 'cancelled' && status !== 'cancelled' && hasClash(booking, booking.member_id)) {
     throw new HttpError(409, 'Termín je medzitým obsadený inou rezerváciou.');
   }
-  db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, booking.id);
+  // dôvod zrušenia od klienta platí len kým je rezervácia zrušená
+  db.prepare("UPDATE bookings SET status = ?, cancel_reason = CASE WHEN ? = 'cancelled' THEN cancel_reason ELSE '' END WHERE id = ?")
+    .run(status, status, booking.id);
   if (booking.status !== status) notifyStatus(booking, status);
   // terapeut dostane upozornenie, keď mu rezerváciu potvrdí niekto iný (admin)
   if (status === 'confirmed' && booking.status !== 'confirmed' && booking.member_id && booking.member_id !== req.user.member_id) {

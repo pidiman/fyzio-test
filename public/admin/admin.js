@@ -170,6 +170,7 @@ const loadBookings = guard(async () => {
           ? `<label class="assign">Terapeut <select data-assign="${b.id}">${memberSelect(b.member_id)}</select></label>`
           : ''}
         ${b.note ? `<p class="note">${esc(b.note)}</p>` : ''}
+        ${b.cancel_reason ? `<p class="note"><b>Klient zrušil:</b> ${esc(b.cancel_reason)}</p>` : ''}
       </div>
       <div class="bk-actions">
         ${b.status === 'new' ? `<button class="btn btn-primary btn-sm" data-status="confirmed" data-id="${b.id}">Potvrdiť</button>` : ''}
@@ -345,6 +346,7 @@ function openEvent(b) {
       ${b.email ? `<dt>E-mail</dt><dd><a href="mailto:${esc(b.email)}">${esc(b.email)}</a></dd>` : ''}
       ${b.phone ? `<dt>Telefón</dt><dd><a href="tel:${esc(b.phone.replace(/\s/g, ''))}">${esc(b.phone)}</a></dd>` : ''}
       ${b.note ? `<dt>Poznámka</dt><dd class="note">${esc(b.note)}</dd>` : ''}
+      ${b.cancel_reason ? `<dt>Dôvod zrušenia</dt><dd class="note">${esc(b.cancel_reason)}</dd>` : ''}
     </dl>
     <div class="bk-actions">
       ${b.status === 'new' ? `<button class="btn btn-primary btn-sm" data-status="confirmed" data-id="${b.id}">Potvrdiť</button>` : ''}

@@ -159,6 +159,10 @@ if (!hasColumn('clients', 'verified_at')) {
     UPDATE clients SET verified_at = created_at;
   `);
 }
+// dôvod, ktorý zadal klient pri zrušení rezervácie z webu
+if (!hasColumn('bookings', 'cancel_reason')) {
+  db.exec("ALTER TABLE bookings ADD COLUMN cancel_reason TEXT NOT NULL DEFAULT ''");
+}
 if (!hasColumn('bookings', 'client_id')) {
   db.exec('ALTER TABLE bookings ADD COLUMN client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL');
 }

@@ -284,6 +284,37 @@ export function notifyClientVerify(c, link) {
   });
 }
 
+// Klient zrušil termín na webe: dôvod dostanú admini (ADMIN_EMAIL a účty adminov) a priradený terapeut
+export function notifyClientCancelled(b, staffEmails) {
+  const seen = new Set();
+  const to = [...staffEmails, ADMIN_EMAIL].filter((e) => e && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+  if (!to.length) return;
+  const { url } = contact();
+  const when = `${fmtDate(b.date)}, ${b.time} – ${b.end_time}`;
+  const rows = [
+    ['Klient', b.name],
+    ['Kontakt', [b.email, b.phone].filter(Boolean).join(' · ') || '—'],
+    ['Procedúra', b.procedure_name],
+    ['Termín', when],
+    ['Terapeut', b.member_name || 'nepriradený'],
+    ['Dôvod', b.cancel_reason],
+  ];
+  const intro = `klient ${b.name} zrušil(a) svoju rezerváciu cez web. Termín sa uvoľnil pre ďalšie rezervácie.`;
+  sendLater(to.join(', '), {
+    subject: `Klient zrušil termín: ${fmtDate(b.date)} ${b.time} – ${b.name}`,
+    text: `Dobrý deň,\n\n${intro}\n\n` +
+      rows.map(([k, v]) => `${(k + ':').padEnd(11)}${v}`).join('\n') +
+      (url ? `\n\nAdministrácia: ${url}/admin` : ''),
+    html: emailHtml({
+      preheader: `${b.name}: ${b.cancel_reason}`,
+      eyebrow: 'Zrušený termín', title: b.name, name: `tím ${SITE_NAME}`, rows,
+      lines: [esc(intro)],
+      button: url ? { label: 'Otvoriť administráciu', href: `${url}/admin` } : null,
+      footnote: 'Tento e-mail bol odoslaný automaticky po zrušení termínu klientom.',
+    }),
+  }, b.email || undefined);
+}
+
 export function notifyStatus(b, status) {
   if (clientEmails[status]) sendLater(b.email, clientEmails[status](b));
 }

@@ -195,6 +195,18 @@
   <button class="btn btn-primary" type="button" data-close autofocus>OK</button>
 </dialog>
 
+<dialog class="modal" id="cancel" aria-labelledby="cancel-title">
+  <button class="x" type="button" data-close aria-label="Zavrieť">×</button>
+  <h3 id="cancel-title">Zrušiť rezerváciu</h3>
+  <p class="lead" id="cancel-what"></p>
+  <form class="fields" id="cancel-form" novalidate>
+    <label class="full">Dôvod zrušenia *<textarea name="reason" rows="4" required minlength="5" maxlength="1000" placeholder="Napr. ochorel(a) som, nestihnem prísť…"></textarea></label>
+    <p class="full small">Vašu správu dostane recepcia aj váš terapeut.</p>
+    <button class="btn btn-danger full">Zrušiť rezerváciu</button>
+    <p class="form-err full" role="alert"></p>
+  </form>
+</dialog>
+
 <dialog class="modal" id="profile" aria-labelledby="profile-title">
   <button class="x" type="button" data-close aria-label="Zavrieť">×</button>
   <h3 id="profile-title">Môj účet</h3>

@@ -314,14 +314,20 @@ function renderMyCalendar() {
     <h3>${esc(title)}${cal.day ? ' <button type="button" class="link" data-cal-all>celý mesiac</button>' : ''}</h3>
     ${shown.map((b) => {
       const [, bm, bd] = b.date.split('-').map(Number);
+      // dnešný termín, ktorý už začal, odmietne server
+      const cancellable = ['new', 'confirmed'].includes(b.status) && b.date >= today;
       return `
       <div class="mb ${b.date < today || b.status === 'cancelled' ? 'past' : ''}">
         <div class="when"><small>${DAYS[dow(b.date)]}</small><b>${bd}</b><small>${MONTHS[bm - 1]}</small></div>
         <div>
           <h4>${esc(b.procedure_name)}</h4>
           <p>${b.time} – ${b.end_time}${b.member_name ? ` · ${esc(b.member_name)}` : ''} · ${eur(b.price)}</p>
+          ${b.cancel_reason ? `<p class="reason">Dôvod zrušenia: ${esc(b.cancel_reason)}</p>` : ''}
         </div>
-        <span class="badge st-${b.status}">${STATUS[b.status] ?? esc(b.status)}</span>
+        <div class="mb-side">
+          <span class="badge st-${b.status}">${STATUS[b.status] ?? esc(b.status)}</span>
+          ${cancellable ? `<button type="button" class="link" data-cancel="${b.id}">Zrušiť termín</button>` : ''}
+        </div>
       </div>`;
     }).join('') || `<p class="hint">${empty}</p>`}`;
 }
@@ -337,7 +343,28 @@ function shiftMonth(n) {
   renderMyCalendar();
 }
 
+let cancelId = null;
+
+function openCancel(b) {
+  cancelId = b.id;
+  $('#cancel-what').textContent = `${b.procedure_name}, ${fmtDate(b.date)} o ${b.time}${b.member_name ? ` (${b.member_name})` : ''}`;
+  $('#cancel-form').reset();
+  $('#cancel-form .form-err').textContent = '';
+  $('#cancel').showModal();
+}
+
+onSubmit($('#cancel-form'), async (data) => {
+  await send(`/api/client/bookings/${cancelId}/cancel`, 'POST', data);
+  $('#cancel').close();
+  await loadMyBookings();
+  // zrušený termín sa uvoľnil – ak je otvorený rovnaký deň, obnoví sa ponuka časov
+  loadSlots();
+  notice('Rezervácia je zrušená', 'Termín sme zrušili a vašu správu sme odoslali recepcii aj terapeutovi. Potvrdenie vám príde e-mailom.');
+});
+
 $('#moje-rezervacie').addEventListener('click', (e) => {
+  const cancel = e.target.closest('[data-cancel]');
+  if (cancel) return openCancel(myBookings.find((b) => b.id === Number(cancel.dataset.cancel)));
   if (e.target.closest('[data-cal-all]')) {
     cal.day = null;
     return renderMyCalendar();
