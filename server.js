@@ -317,6 +317,7 @@ app.post('/api/client/register', rateLimit(5, 3600e3), async (req, res) => {
   if (body.gdpr !== true) throw bad('Bez súhlasu so spracúvaním osobných údajov sa nie je možné zaregistrovať.');
   const c = clientInput(body);
   if (typeof body.password !== 'string' || body.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
+  if (body.password2 !== body.password) throw bad('Heslá sa nezhodujú.');
   const existing = await db.get('SELECT id, verified_at FROM clients WHERE lower(email) = lower(?)', c.email);
   if (existing?.verified_at) throw new HttpError(409, 'Účet s týmto e-mailom už existuje – prihláste sa.');
   let id = existing?.id;

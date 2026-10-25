@@ -440,6 +440,14 @@ function notice(title, text, ok = true) {
 }
 
 // po registrácii sa klient neprihlási – najprv musí potvrdiť e-mail odkazom
+// zopakované heslo sa musí zhodovať – prehliadač chybu ukáže pri odoslaní (reportValidity)
+const { password, password2 } = registerForm.elements;
+const checkPasswords = () => {
+  password2.setCustomValidity(password2.value && password2.value !== password.value ? 'Heslá sa nezhodujú.' : '');
+};
+password.addEventListener('input', checkPasswords);
+password2.addEventListener('input', checkPasswords);
+
 onSubmit(registerForm, async (data) => {
   if (!gdpr.checked) throw new Error('Pre registráciu musíte súhlasiť so spracúvaním osobných údajov.');
   const { email } = await send('/api/client/register', 'POST', { ...data, gdpr: true });
