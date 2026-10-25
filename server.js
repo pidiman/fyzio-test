@@ -331,16 +331,20 @@ function sendClientVerification(req, clientId) {
   notifyClientVerify(clientProfile(clientId), `${baseUrl(req)}/#overenie=${token}`);
 }
 
-// potvrdenie e-mailu odkazom z registračného e-mailu; klient sa zároveň prihlási
+// Potvrdenie e-mailu odkazom z registračného e-mailu; pri prvom použití sa klient zároveň prihlási.
+// Odkaz platí až do vypršania: otvorí ho aj skener odkazov v e-maile alebo druhý prehliadač,
+// opakované otvorenie preto len oznámi, že účet je už potvrdený (bez prihlásenia).
 app.post('/api/client/verify', rateLimit(20, 15 * 60e3), (req, res) => {
   const { token } = req.body ?? {};
-  const row = typeof token === 'string' &&
-    db.prepare('SELECT client_id FROM client_tokens WHERE token_hash = ? AND expires_at > ?').get(tokenHash(token), Date.now());
+  const row = typeof token === 'string' && db.prepare(`
+    SELECT t.client_id, c.verified_at FROM client_tokens t JOIN clients c ON c.id = t.client_id
+    WHERE t.token_hash = ? AND t.expires_at > ?
+  `).get(tokenHash(token), Date.now());
   if (!row) throw bad('Odkaz je neplatný alebo vypršal. Prihláste sa e-mailom a heslom a pošleme vám nový.');
+  if (row.verified_at) return res.json({ already: true });
   db.prepare("UPDATE clients SET verified_at = datetime('now') WHERE id = ?").run(row.client_id);
-  db.prepare('DELETE FROM client_tokens WHERE client_id = ?').run(row.client_id);
   startClientSession(req, res, row.client_id);
-  res.json(clientProfile(row.client_id));
+  res.json({ client: clientProfile(row.client_id) });
 });
 
 app.post('/api/client/login', rateLimit(10, 15 * 60e3), (req, res) => {

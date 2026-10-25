@@ -377,7 +377,8 @@ const verifyToken = /^#overenie=([\w-]+)$/.exec(location.hash)?.[1];
 if (verifyToken) {
   history.replaceState(null, '', location.pathname + location.search);
   send('/api/client/verify', 'POST', { token: verifyToken }).then(
-    (client) => {
+    ({ client }) => {
+      if (!client) return notice('Účet je už potvrdený', 'Prihláste sa e-mailom a heslom, ktoré ste zadali pri registrácii.');
       setClient(client);
       notice('Účet je potvrdený', `Vitajte, ${client.name}! Ste prihlásení a pri rezervácii sa vaše údaje vyplnia automaticky.`);
     },
