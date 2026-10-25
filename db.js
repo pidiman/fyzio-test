@@ -37,6 +37,7 @@ function wrap(conn) {
 
 export const db = {
   ...wrap(pool),
+  close: () => pool.end(),
   // transakcia: všetky dotazy vo fn idú cez jedno spojenie
   async tx(fn) {
     const client = await pool.connect();

@@ -3,6 +3,8 @@ services:
     build: .
     container_name: fyzio-web
     restart: unless-stopped
+    # tini ako PID 1 – odovzdá SIGTERM procesu node a zbiera zombie procesy
+    init: true
     env_file:
       - path: .env
         required: false

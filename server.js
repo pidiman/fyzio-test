@@ -1088,4 +1088,18 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Chyba servera.' });
 });
 
-app.listen(PORT, () => console.log(`Fyzio beží na http://localhost:${PORT}  (admin: /admin)`));
+const server = app.listen(PORT, () => console.log(`Fyzio beží na http://localhost:${PORT}  (admin: /admin)`));
+
+// docker compose stop / deploy posiela SIGTERM: nové spojenia sa neprijímajú, rozbehnuté požiadavky dobehnú,
+// potom sa zavrie Postgres a proces skončí sám, keď dobehnú aj e-maily a SMS odosielané na pozadí
+function shutdown(signal) {
+  console.log(`${signal} – ukončujem…`);
+  server.close(() => db.close().catch((err) => console.error('Postgres:', err.message)));
+  // Docker po 10 s posiela SIGKILL, radšej skončiť skôr sami
+  setTimeout(() => {
+    console.error('Ukončenie trvá príliš dlho, končím násilne.');
+    process.exit(1);
+  }, 8000).unref();
+}
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);
