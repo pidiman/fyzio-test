@@ -19,15 +19,16 @@ a aspoň jeden z terapeutov procedúry; klient si na webe môže terapeuta vybra
 ```bash
 npm install
 cp .env.example .env      # nastav ADMIN_PASSWORD a pripojenie k Postgresu
+npm run migrate           # tabuľky a počiatočné dáta (aj po každej zmene schémy)
 npm run dev               # http://localhost:3000
 ```
 
 Vyžaduje Node.js 24 alebo novší a PostgreSQL (napr. `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=fyzio postgres:18-alpine`).
 Pripojenie sa nastavuje v `.env` cez `DATABASE_URL=postgres://postgres:fyzio@localhost:5432/postgres`
 alebo štandardné premenné `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`.
-Tabuľky sa vytvoria pri štarte a prázdna databáza sa naplní ukážkovými procedúrami a tímom.
+Tabuľky vytvára migrácia (`migrate.js`), server bez nej neštartuje; prázdnu databázu naplní ukážkovými procedúrami a tímom.
 Fotky tímu sa ukladajú do `data/media`.
-Pri prvom spustení sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (ak nie je nastavené, server vypíše dočasné heslo).
+Pri prvej migrácii sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (ak nie je nastavené, server vypíše dočasné heslo).
 Ďalšie účty sa zakladajú v administrácii, `ADMIN_PASSWORD` sa potom už nepoužíva – heslo zmeníte v záložke *Môj účet*.
 
 ## E-maily
@@ -149,7 +150,8 @@ Automaticky pri každom pushi do `main` (GitHub Actions → `.github/workflows/d
 ~/docker/fyzio/deploy.sh
 ```
 
-`deploy.sh` zahodí lokálne zmeny v sledovaných súboroch na serveri (`git reset --hard origin/main`);
+`deploy.sh` zbuilduje nový image, spustí v ňom migráciu (`docker compose run --rm web node migrate.js`)
+a až potom vymení bežiaci kontajner. Zahodí pritom lokálne zmeny v sledovaných súboroch na serveri (`git reset --hard origin/main`);
 `.env` a `docker-compose.override.yml` nie sú v gite, tie ostanú.
 
 ### Automatické nasadenie – jednorazové nastavenie
@@ -192,8 +194,7 @@ cez súkromnú sieť – port nie je zverejnený. Heslo je `POSTGRES_PASSWORD` v
 docker exec -it fyzio-db psql -U fyzio fyzio     # konzola databázy
 ```
 
-**Prechod zo SQLite:** pri prvom štarte s prázdnym Postgresom sa dáta z `data/fyzio.db` automaticky prenesú
-(postup je v logu `docker logs fyzio-web`) a súbor sa premenuje na `fyzio.db.migrated` – ostáva ako záloha.
+Pôvodná SQLite databáza ostáva po prechode na Postgres vo volume ako záloha `data/fyzio.db.migrated`.
 
 ### Záloha
 

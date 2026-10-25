@@ -2,7 +2,8 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { db, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
+import { db, loadSettings, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
+import { hashPassword, verifyPassword } from './passwords.js';
 import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
   mailStatus, sendMail, sendAccountInvite, notifyPasswordSet, notifyNewBooking, notifyStatus, notifyTherapist,
@@ -25,33 +26,12 @@ class HttpError extends Error {
 }
 const bad = (message) => new HttpError(400, message);
 
+await loadSettings();
+
 // ---------- heslá ----------
-
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16);
-  const key = crypto.scryptSync(password, salt, 32);
-  return `scrypt$${salt.toString('base64url')}$${key.toString('base64url')}`;
-}
-
-function verifyPassword(password, stored) {
-  const [, salt, key] = stored.split('$');
-  const expected = Buffer.from(key, 'base64url');
-  return crypto.timingSafeEqual(crypto.scryptSync(password, Buffer.from(salt, 'base64url'), expected.length), expected);
-}
 
 // pri neznámom mene sa overuje voči tomuto hashu, aby odpoveď trvala rovnako dlho
 const DUMMY_HASH = hashPassword(crypto.randomBytes(9).toString('base64url'));
-
-// Prvý účet: admin s heslom z ADMIN_PASSWORD (ďalšie účty sa zakladajú v administrácii)
-if (!(await db.get('SELECT 1 FROM users LIMIT 1'))) {
-  let password = process.env.ADMIN_PASSWORD;
-  if (!password) {
-    password = crypto.randomBytes(9).toString('base64url');
-    console.warn(`ADMIN_PASSWORD nie je nastavené – dočasné heslo pre účet „admin“: ${password}`);
-  }
-  await db.run("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')", hashPassword(password));
-  console.log('Vytvorený účet „admin“ (heslo z ADMIN_PASSWORD).');
-}
 
 // ---------- pomocné funkcie (dátumy a časy sú v lokálnom čase prevádzky) ----------
 

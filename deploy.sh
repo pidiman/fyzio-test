@@ -6,7 +6,11 @@ cd "$(dirname "$0")"
 
 git fetch --quiet origin main
 git reset --hard origin/main
-docker compose up -d --build --remove-orphans
+docker compose build web
+# migrácia v jednorazovom kontajneri z nového image (podľa depends_on najprv naštartuje db);
+# ak zlyhá, skript skončí a ďalej beží stará verzia
+docker compose run --rm web node migrate.js
+docker compose up -d --remove-orphans
 docker image prune -f >/dev/null
 
 # počkať, kým web odpovedá
