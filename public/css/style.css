@@ -195,6 +195,48 @@ section{padding:104px 0}
 .privacy a{border-bottom:1px solid var(--taupe)}
 .privacy .btn{margin-top:8px}
 
+/* Moje rezervácie */
+.my-sec{background:var(--shell)}
+.my{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;align-items:start}
+.cal{background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:24px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.cal-head b{font-family:var(--serif);font-weight:500;font-size:1.3rem;color:var(--ink);text-transform:capitalize}
+.cal-head button{width:40px;height:40px;border:1px solid var(--linen);background:var(--white);border-radius:50%;font-size:1.3rem;line-height:1;color:var(--ink);cursor:pointer}
+.cal-head button:hover{border-color:var(--taupe-d)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-grid .wd{text-align:center;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-bottom:6px}
+.cd{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid transparent;border-radius:4px;background:none;font:inherit;font-size:.95rem;color:var(--text);padding:0}
+.cd.out{color:var(--sand)}
+.cd.today{border-color:var(--taupe)}
+.cd.has{background:var(--shell);color:var(--ink);font-weight:500;cursor:pointer}
+.cd.has:hover{border-color:var(--taupe-d)}
+.cd.sel{background:var(--ink);border-color:var(--ink);color:var(--cream)}
+.cd i{display:flex;gap:3px}
+.cd em,.cal-legend em{width:6px;height:6px;border-radius:50%;flex:none}
+.cal-legend{list-style:none;display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:16px;padding-top:14px;border-top:1px solid var(--linen);font-size:.8rem;color:var(--muted)}
+.cal-legend li{display:flex;align-items:center;gap:6px}
+em.st-new{background:var(--taupe-d)}
+em.st-confirmed{background:#5f7d5a}
+em.st-done{background:var(--taupe)}
+em.st-cancelled{background:var(--danger)}
+.my-list{display:grid;gap:10px}
+.my-list h3{font-size:1.3rem;margin-bottom:4px}
+.my-list h3::first-letter{text-transform:uppercase}
+.my-list h3 .link{font-family:var(--sans);font-size:.8rem;margin-left:8px;color:var(--muted)}
+.my-list .hint a{color:var(--ink);border-bottom:1px solid var(--taupe)}
+.mb{background:var(--white);border:1px solid var(--linen);border-radius:var(--radius);padding:14px 18px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:16px;align-items:center}
+.mb.past{opacity:.6}
+.mb .when{min-width:48px;text-align:center;line-height:1.15}
+.mb .when b{display:block;font-family:var(--serif);font-weight:500;font-size:1.45rem;color:var(--ink)}
+.mb .when small{display:block;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.mb h4{font-size:1.05rem;color:var(--ink)}
+.mb p{color:var(--muted);font-size:.9rem}
+.badge{font-size:.66rem;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:999px;white-space:nowrap}
+.badge.st-new{background:var(--shell);color:var(--taupe-d)}
+.badge.st-confirmed{background:#e6ede3;color:#4b6647}
+.badge.st-done{background:var(--linen);color:var(--stone)}
+.badge.st-cancelled{background:#f5e3df;color:var(--danger)}
+
 /* CTA */
 .cta-sec{padding:0}
 .cta{position:relative;background:var(--taupe);text-align:center;padding:80px 24px;overflow:hidden}
@@ -229,12 +271,16 @@ footer .logo small{color:var(--taupe)}
   .team{grid-template-columns:1fr 1fr}
   .foot{grid-template-columns:1fr 1fr}
   .summary{position:static}
+  .my{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:760px){
   .menu,.nav .btn-primary{display:none}
   .burger{display:block}
   .nav-actions{margin-left:auto;margin-right:8px}
   .modal{padding:36px 20px 24px}
+  .cal{padding:16px}
+  .mb{grid-template-columns:auto minmax(0,1fr)}
+  .mb .badge{grid-column:2;justify-self:start}
   .menu.open{display:flex;flex-direction:column;position:absolute;top:76px;left:0;right:0;background:var(--cream);padding:24px 16px;gap:18px;border-bottom:1px solid var(--linen);box-shadow:var(--shadow)}
   .burger.open span:nth-child(1){transform:translateY(7.5px) rotate(45deg)}
   .burger.open span:nth-child(2){opacity:0}

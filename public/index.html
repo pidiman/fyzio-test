@@ -20,6 +20,7 @@
       <li><a href="#preco">Prístup</a></li>
       <li><a href="#priestor">Priestor</a></li>
       <li id="menu-tim" hidden><a href="#tim">Tím</a></li>
+      <li id="menu-moje" hidden><a href="#moje-rezervacie">Moje rezervácie</a></li>
       <li><a href="#kontakt">Kontakt</a></li>
     </ul>
     <div class="nav-actions">
@@ -204,6 +205,7 @@
     <button class="btn btn-primary full">Uložiť zmeny</button>
     <p class="form-err full" role="alert"></p>
   </form>
+  <a href="#moje-rezervacie" class="btn btn-ghost wide" data-close>Moje rezervácie</a>
   <button class="btn btn-ghost wide" id="logout" type="button">Odhlásiť sa</button>
   <details class="delete-account">
     <summary>Zrušiť účet a vymazať údaje</summary>
@@ -236,6 +238,34 @@
     Úrad na ochranu osobných údajov SR, Hraničná 12, 820 07 Bratislava 27, <a href="https://dataprotection.gov.sk" target="_blank" rel="noopener">dataprotection.gov.sk</a>.</p>
   <button class="btn btn-primary" type="button" data-close>Rozumiem</button>
 </dialog>
+
+<!-- len pre prihláseného klienta -->
+<section id="moje-rezervacie" class="my-sec" hidden>
+  <div class="container">
+    <div class="sec-head">
+      <span class="eyebrow">Môj účet</span>
+      <h2>Moje rezervácie</h2>
+      <p>Prehľad vašich termínov. Kliknutím na deň v kalendári zobrazíte jeho rezervácie.</p>
+    </div>
+    <div class="my">
+      <div class="cal">
+        <div class="cal-head">
+          <button type="button" id="cal-prev" aria-label="Predchádzajúci mesiac">‹</button>
+          <b id="cal-title"></b>
+          <button type="button" id="cal-next" aria-label="Nasledujúci mesiac">›</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <ul class="cal-legend">
+          <li><em class="st-new"></em>Čaká na potvrdenie</li>
+          <li><em class="st-confirmed"></em>Potvrdená</li>
+          <li><em class="st-done"></em>Absolvovaná</li>
+          <li><em class="st-cancelled"></em>Zrušená</li>
+        </ul>
+      </div>
+      <div class="my-list" id="my-list"></div>
+    </div>
+  </div>
+</section>
 
 <section id="zavolat" class="cta-sec" hidden>
   <div class="container">

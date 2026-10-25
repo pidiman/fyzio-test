@@ -214,6 +214,7 @@ $('#submit').addEventListener('click', async () => {
     $('#done').showModal();
     form.reset();
     fillContact();
+    loadMyBookings();
   } catch (err) {
     $('#err').textContent = err.message;
     if (err.status === 409) loadSlots();
@@ -259,7 +260,95 @@ function setClient(client) {
   state.client = client;
   renderAccount();
   fillContact();
+  loadMyBookings();
 }
+
+// ---------- moje rezervácie (kalendár prihláseného klienta) ----------
+
+const MONTHS_LONG = ['január', 'február', 'marec', 'apríl', 'máj', 'jún', 'júl', 'august', 'september', 'október', 'november', 'december'];
+const STATUS = { new: 'Čaká na potvrdenie', confirmed: 'Potvrdená', done: 'Absolvovaná', cancelled: 'Zrušená' };
+// month = zobrazený mesiac (YYYY-MM), day = vybraný deň alebo null = celý mesiac
+const cal = { month: null, day: null };
+let myBookings = [];
+
+async function loadMyBookings() {
+  $('#moje-rezervacie').hidden = $('#menu-moje').hidden = !state.client;
+  if (!state.client) return;
+  try {
+    myBookings = await api('/api/client/bookings');
+  } catch {
+    myBookings = [];
+  }
+  renderMyCalendar();
+}
+
+function renderMyCalendar() {
+  const today = state.info?.today ?? new Date().toISOString().slice(0, 10);
+  cal.month ??= today.slice(0, 7);
+  const [y, m] = cal.month.split('-').map(Number);
+  $('#cal-title').textContent = `${MONTHS_LONG[m - 1]} ${y}`;
+
+  const byDate = new Map();
+  for (const b of myBookings) byDate.set(b.date, [...(byDate.get(b.date) || []), b]);
+
+  // 6 týždňov od pondelka pred prvým dňom mesiaca
+  const first = `${cal.month}-01`;
+  const start = addDays(first, -((dow(first) + 6) % 7));
+  let html = [1, 2, 3, 4, 5, 6, 0].map((d) => `<span class="wd">${DAYS[d]}</span>`).join('');
+  for (let i = 0; i < 42; i++) {
+    const d = addDays(start, i);
+    const list = byDate.get(d) || [];
+    const cls = [d.slice(0, 7) !== cal.month && 'out', d === today && 'today', d === cal.day && 'sel', list.length && 'has']
+      .filter(Boolean).join(' ');
+    html += `<button type="button" class="cd ${cls}" data-cal-day="${d}" ${list.length ? '' : 'disabled'}>
+      <span>${Number(d.slice(8))}</span>${list.length ? `<i>${list.map((b) => `<em class="st-${b.status}"></em>`).join('')}</i>` : ''}</button>`;
+  }
+  $('#cal-grid').innerHTML = html;
+
+  const shown = cal.day ? byDate.get(cal.day) || [] : myBookings.filter((b) => b.date.startsWith(cal.month));
+  const title = cal.day ? fmtDate(cal.day) : `${MONTHS_LONG[m - 1]} ${y}`;
+  const empty = myBookings.length
+    ? 'V tomto mesiaci nemáte žiadne rezervácie.'
+    : 'Zatiaľ nemáte žiadne rezervácie. <a href="#rezervacia">Objednajte sa online.</a>';
+  $('#my-list').innerHTML = `
+    <h3>${esc(title)}${cal.day ? ' <button type="button" class="link" data-cal-all>celý mesiac</button>' : ''}</h3>
+    ${shown.map((b) => {
+      const [, bm, bd] = b.date.split('-').map(Number);
+      return `
+      <div class="mb ${b.date < today || b.status === 'cancelled' ? 'past' : ''}">
+        <div class="when"><small>${DAYS[dow(b.date)]}</small><b>${bd}</b><small>${MONTHS[bm - 1]}</small></div>
+        <div>
+          <h4>${esc(b.procedure_name)}</h4>
+          <p>${b.time} – ${b.end_time}${b.member_name ? ` · ${esc(b.member_name)}` : ''} · ${eur(b.price)}</p>
+        </div>
+        <span class="badge st-${b.status}">${STATUS[b.status] ?? esc(b.status)}</span>
+      </div>`;
+    }).join('') || `<p class="hint">${empty}</p>`}`;
+}
+
+$('#cal-prev').addEventListener('click', () => shiftMonth(-1));
+$('#cal-next').addEventListener('click', () => shiftMonth(1));
+
+function shiftMonth(n) {
+  const [y, m] = cal.month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  cal.month = d.toISOString().slice(0, 7);
+  cal.day = null;
+  renderMyCalendar();
+}
+
+$('#moje-rezervacie').addEventListener('click', (e) => {
+  if (e.target.closest('[data-cal-all]')) {
+    cal.day = null;
+    return renderMyCalendar();
+  }
+  const day = e.target.closest('[data-cal-day]');
+  if (!day) return;
+  const d = day.dataset.calDay;
+  cal.day = cal.day === d ? null : d;
+  cal.month = d.slice(0, 7);
+  renderMyCalendar();
+});
 
 function showTab(tab) {
   document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('sel', b.dataset.tab === tab));
@@ -342,16 +431,14 @@ onSubmit($('#profile-form'), async (data) => {
 onSubmit($('#delete-form'), async (data) => {
   if (!confirm('Naozaj chcete natrvalo zrušiť účet?')) return;
   await send('/api/client/me', 'DELETE', data);
-  state.client = null;
-  renderAccount();
+  setClient(null);
   $('#contact').reset();
   $('#profile').close();
 });
 
 $('#logout').addEventListener('click', async () => {
   await send('/api/client/logout', 'POST', {}).catch(() => {});
-  state.client = null;
-  renderAccount();
+  setClient(null);
   $('#contact').reset();
   $('#profile').close();
 });

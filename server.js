@@ -379,6 +379,16 @@ app.put('/api/client/me', (req, res) => {
   res.json(clientProfile(id));
 });
 
+// rezervácie klienta: urobené z účtu a aj staršie bez účtu na jeho (potvrdený) e-mail
+app.get('/api/client/bookings', (req, res) => {
+  const { id, email } = requireClient(req);
+  res.json(db.prepare(`
+    SELECT id, procedure_name, date, time, end_time, duration_min, price, status, member_name, note FROM bookings
+    WHERE client_id = ? OR (client_id IS NULL AND email = ? COLLATE NOCASE)
+    ORDER BY date, time LIMIT 1000
+  `).all(id, email));
+});
+
 // zrušenie účtu = odvolanie súhlasu; údaje účtu sa vymažú, rezervácie ostanú bez väzby na účet
 app.delete('/api/client/me', rateLimit(10, 15 * 60e3), (req, res) => {
   const { id } = requireClient(req);
