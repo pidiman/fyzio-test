@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 
 const {
   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE,
-  MAIL_FROM, ADMIN_EMAIL, SITE_NAME = 'FyzioPlus', SITE_URL = '', CONTACT_PHONE = '',
+  MAIL_FROM, ADMIN_EMAIL, SITE_NAME = 'FYZIO Stupava', SITE_URL = '', CONTACT_PHONE = '',
 } = process.env;
 
 const port = Number(SMTP_PORT) || 587;
