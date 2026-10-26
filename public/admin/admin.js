@@ -868,7 +868,56 @@ const loadSettings = guard(async () => {
 
   await loadMail();
   await loadSms();
+  await loadSecurity();
 });
+
+// ---------- zabezpečenie: limit pokusov o prihlásenie ----------
+
+const securityForm = $('#security-form');
+const AUTH_KIND = {
+  admin_login: 'Prihlásenie – admin', admin_reset: 'Nastavenie hesla – admin',
+  client_login: 'Prihlásenie – klient', client_forgot: 'Zabudnuté heslo – klient', client_reset: 'Nové heslo – klient',
+};
+const AUTH_RESULT = {
+  ok: ['Úspech', 'b-confirmed'], fail: ['Neúspech', 'b-new'], blocked: ['Zablokovaný', 'b-cancelled'],
+};
+
+async function loadSecurity() {
+  const sec = await api('/api/admin/security');
+  securityForm.elements.max_attempts.value = sec.max_attempts;
+  securityForm.elements.window_min.value = sec.window_min;
+  $('#security-blocked').innerHTML = sec.blocked.map((b) => `
+    <div class="sms-row">
+      <div class="sms-when">${fmtStamp(b.last_at)}</div>
+      <div class="sms-main"><b>${esc(b.ip)}</b> <span class="muted-inline">· ${b.attempts} neúspešných pokusov</span></div>
+      <div class="sms-state"><span class="badge b-cancelled">do ${fmtStamp(b.until)}</span></div>
+    </div>`).join('') || '<div class="empty">Žiadna IP adresa nie je zablokovaná.</div>';
+  $('#security-log').innerHTML = sec.log.map((l) => {
+    const [label, cls] = AUTH_RESULT[l.result] ?? [l.result, 'b-done'];
+    return `
+    <div class="sms-row">
+      <div class="sms-when">${fmtStamp(l.created_at)}</div>
+      <div class="sms-main">
+        <b>${esc(l.ip)}</b> <span class="muted-inline">· ${AUTH_KIND[l.kind] ?? esc(l.kind)}</span>
+        ${l.identifier ? `<p>${esc(l.identifier)}</p>` : ''}
+        ${l.user_agent ? `<p class="muted-inline">${esc(l.user_agent)}</p>` : ''}
+      </div>
+      <div class="sms-state"><span class="badge ${cls}">${label}</span></div>
+    </div>`;
+  }).join('') || '<div class="empty">Zatiaľ žiadne pokusy.</div>';
+}
+
+securityForm.addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const f = securityForm.elements;
+  await api('/api/admin/security', {
+    method: 'PUT', body: { max_attempts: Number(f.max_attempts.value), window_min: Number(f.window_min.value) },
+  });
+  toast('Obmedzenie pokusov uložené');
+  await loadSecurity();
+}));
+
+$('#security-refresh').addEventListener('click', guard(loadSecurity));
 
 // ---------- e-mailové notifikácie ----------
 

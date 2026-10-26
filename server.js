@@ -110,6 +110,43 @@ function rateLimit(max, windowMs) {
   };
 }
 
+// Prihlásenie a obnova hesla: limit neúspešných pokusov z jednej IP podľa Nastavení, každý pokus sa zapíše do logu.
+// Žiadosť o zabudnuté heslo sa počíta vždy (posiela e-mail a odpoveď je rovnaká, aj keď účet neexistuje).
+const AUTH_KINDS = ['admin_login', 'admin_reset', 'client_login', 'client_forgot', 'client_reset'];
+const clientIp = (req) => String(req.ip ?? '').replace(/^::ffff:/, '');
+const authLimits = () => {
+  const s = getSettings();
+  return { max: s.auth_max_attempts ?? 5, windowMin: s.auth_window_min ?? 15 };
+};
+const COUNTED = "(result = 'fail' OR (kind = 'client_forgot' AND result = 'ok'))";
+
+async function logAttempt(req, kind, result) {
+  const identifier = String(req.body?.username ?? req.body?.email ?? '').trim().slice(0, 120);
+  // log sa drží 90 dní
+  await db.run("DELETE FROM auth_attempts WHERE created_at < now() - interval '90 days'");
+  await db.run('INSERT INTO auth_attempts (ip, kind, identifier, result, user_agent) VALUES (?, ?, ?, ?, ?)',
+    clientIp(req), kind, identifier, result, String(req.get('user-agent') ?? '').slice(0, 200));
+}
+
+function authLimit(kind) {
+  return async (req, res, next) => {
+    const { max, windowMin } = authLimits();
+    const { n } = await db.get(
+      `SELECT COUNT(*)::int AS n FROM auth_attempts WHERE ip = ? AND ${COUNTED} AND created_at > now() - make_interval(mins => ?)`,
+      clientIp(req), windowMin);
+    if (n >= max) {
+      await logAttempt(req, kind, 'blocked');
+      throw new HttpError(429, `Príliš veľa pokusov. Skúste to znova o ${windowMin} min.`);
+    }
+    // výsledok podľa odpovede: 2xx = úspech, chyba klienta (zlé heslo, neplatný odkaz…) = neúspech
+    res.on('finish', () => {
+      const result = res.statusCode < 400 ? 'ok' : res.statusCode < 500 ? 'fail' : null;
+      if (result) logAttempt(req, kind, result).catch((err) => console.error('Log prihlásení:', err.message));
+    });
+    next();
+  };
+}
+
 // ---------- aplikácia ----------
 
 const app = express();
@@ -207,7 +244,7 @@ const sessionToken = (req) => /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie |
 const endSession = (token) => token && db.run('DELETE FROM sessions WHERE token_hash = ?', tokenHash(token));
 const endSessions = (userId) => db.run('DELETE FROM sessions WHERE user_id = ?', userId);
 
-app.post('/api/admin/login', rateLimit(10, 15 * 60e3), async (req, res) => {
+app.post('/api/admin/login', authLimit('admin_login'), async (req, res) => {
   const user = await db.get('SELECT id, password_hash FROM users WHERE lower(username) = lower(?)', str(req.body?.username, 64));
   const ok = verifyPassword(String(req.body?.password ?? ''), user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) throw new HttpError(401, 'Nesprávne meno alebo heslo.');
@@ -252,7 +289,7 @@ async function sendInvite(req, userId, isNew) {
   await sendAccountInvite(user, `${baseUrl(req)}/admin/#heslo=${token}`, isNew);
 }
 
-app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), async (req, res) => {
+app.post('/api/admin/password-reset', authLimit('admin_reset'), async (req, res) => {
   const { token, password } = req.body ?? {};
   const row = typeof token === 'string' &&
     await db.get('SELECT user_id, kind FROM password_tokens WHERE token_hash = ? AND expires_at > ?', tokenHash(token), Date.now());
@@ -357,7 +394,7 @@ app.post('/api/client/verify', rateLimit(20, 15 * 60e3), async (req, res) => {
   res.json({ client: await clientProfile(row.client_id) });
 });
 
-app.post('/api/client/login', rateLimit(10, 15 * 60e3), async (req, res) => {
+app.post('/api/client/login', authLimit('client_login'), async (req, res) => {
   const client = await db.get('SELECT id, password_hash, verified_at FROM clients WHERE lower(email) = lower(?)',
     str(req.body?.email, 120));
   const ok = verifyPassword(String(req.body?.password ?? ''), client?.password_hash ?? DUMMY_HASH);
@@ -376,7 +413,7 @@ app.post('/api/client/login', rateLimit(10, 15 * 60e3), async (req, res) => {
 const RESET_MS = 2 * 3600e3;
 
 // odpoveď je vždy rovnaká, aby sa nedalo zistiť, či účet s daným e-mailom existuje
-app.post('/api/client/forgot', rateLimit(5, 3600e3), async (req, res) => {
+app.post('/api/client/forgot', authLimit('client_forgot'), async (req, res) => {
   const email = str(req.body?.email, 120);
   if (!isEmail(email)) throw bad('Zadajte platný e-mail.');
   const client = await db.get('SELECT id FROM clients WHERE lower(email) = lower(?)', email);
@@ -393,7 +430,7 @@ app.post('/api/client/forgot', rateLimit(5, 3600e3), async (req, res) => {
 
 // nové heslo cez odkaz z e-mailu: odhlási ostatné zariadenia a klienta prihlási;
 // odkaz prišiel na jeho e-mail, preto sa nepotvrdený účet zároveň potvrdí
-app.post('/api/client/reset', rateLimit(10, 15 * 60e3), async (req, res) => {
+app.post('/api/client/reset', authLimit('client_reset'), async (req, res) => {
   const { token, password, password2 } = req.body ?? {};
   const row = typeof token === 'string' && await db.get(
     'SELECT client_id FROM client_password_tokens WHERE token_hash = ? AND expires_at > ?', tokenHash(token), Date.now()
@@ -494,7 +531,8 @@ app.use('/api/admin', async (req, res, next) => {
 
 const isAdmin = (req) => req.user.role === 'admin';
 app.use(
-  ['/api/admin/procedures', '/api/admin/rooms', '/api/admin/team', '/api/admin/users', '/api/admin/clients', '/api/admin/settings', '/api/admin/mail', '/api/admin/sms'],
+  ['/api/admin/procedures', '/api/admin/rooms', '/api/admin/team', '/api/admin/users', '/api/admin/clients', '/api/admin/settings', '/api/admin/mail', '/api/admin/sms',
+    '/api/admin/security'],
   (req, res, next) => {
     if (!isAdmin(req)) throw new HttpError(403, 'Na túto akciu nemáte oprávnenie.');
     next();
@@ -943,8 +981,38 @@ app.delete('/api/admin/clients/:id', async (req, res) => {
 
 // prístupové údaje SMS majú vlastnú časť (/api/admin/sms), heslo sa do prehliadača neposiela
 app.get('/api/admin/settings', (req, res) => {
-  const { sms_integration_id, sms_integration_code, sms_sender, sms_enabled, ...settings } = getSettings();
+  const { sms_integration_id, sms_integration_code, sms_sender, sms_enabled, auth_max_attempts, auth_window_min, ...settings } =
+    getSettings();
   res.json(settings);
+});
+
+// ---------- zabezpečenie: limit pokusov o prihlásenie (len admin) ----------
+
+app.get('/api/admin/security', async (req, res) => {
+  const { max, windowMin } = authLimits();
+  const [log, blocked] = await Promise.all([
+    db.all('SELECT id, created_at, ip, kind, identifier, result, user_agent FROM auth_attempts ORDER BY created_at DESC LIMIT 200'),
+    // IP, ktoré práve prekročili limit; odblokujú sa samy, keď z okna vypadne max-ty najnovší započítaný pokus
+    db.all(`
+      WITH c AS (
+        SELECT ip, created_at, ROW_NUMBER() OVER (PARTITION BY ip ORDER BY created_at DESC) AS rn
+        FROM auth_attempts WHERE ${COUNTED} AND created_at > now() - make_interval(mins => ?)
+      )
+      SELECT ip, COUNT(*)::int AS attempts, MAX(created_at) AS last_at,
+        MAX(created_at) FILTER (WHERE rn = ?) + make_interval(mins => ?) AS until
+      FROM c GROUP BY ip HAVING COUNT(*) >= ? ORDER BY last_at DESC
+    `, windowMin, max, windowMin, max),
+  ]);
+  res.json({ max_attempts: max, window_min: windowMin, log, blocked });
+});
+
+app.put('/api/admin/security', async (req, res) => {
+  const max = Math.round(Number(req.body?.max_attempts));
+  const windowMin = Math.round(Number(req.body?.window_min));
+  if (!(max >= 1 && max <= 100)) throw bad('Počet pokusov: 1 – 100.');
+  if (!(windowMin >= 1 && windowMin <= 1440)) throw bad('Časové okno: 1 – 1440 minút.');
+  await saveSettings({ auth_max_attempts: max, auth_window_min: windowMin });
+  res.json({ ok: true });
 });
 
 app.get('/api/admin/mail', async (req, res) => {

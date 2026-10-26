@@ -207,6 +207,7 @@
         <button type="button" data-set-tab="contact">Kontakt</button>
         <button type="button" data-set-tab="mail">E-maily</button>
         <button type="button" data-set-tab="sms">SMS</button>
+        <button type="button" data-set-tab="security">Zabezpečenie</button>
       </nav>
       <!-- Prevádzka a Kontakt sú jeden formulár, ukladá sa celý -->
       <form id="settings-form">
@@ -293,6 +294,26 @@
           <div class="toolbar"><h3>Odoslané SMS</h3><button type="button" class="btn btn-ghost btn-sm" id="sms-refresh">↻ Obnoviť</button></div>
           <p class="muted">Posledných 200 SMS. Záznamy staršie ako rok sa mažú automaticky.</p>
           <div class="sms-log" id="sms-log"></div>
+        </div>
+      </div>
+      <div data-set-pane="security" hidden>
+        <form class="panel form-grid" id="security-form">
+          <h3 class="full">Obmedzenie pokusov o prihlásenie</h3>
+          <p class="muted full">Platí pre prihlásenie a obnovu hesla v administrácii aj pre klientov na webe. Keď z jednej IP adresy
+            príde viac neúspešných pokusov, ďalšie sa odmietnu, kým neuplynie časové okno. Žiadosť o zabudnuté heslo sa počíta vždy.</p>
+          <label>Počet pokusov<input name="max_attempts" type="number" min="1" max="100" required></label>
+          <label>Časové okno (minúty)<input name="window_min" type="number" min="1" max="1440" required></label>
+          <div class="full form-actions"><button class="btn btn-primary">Uložiť</button></div>
+        </form>
+        <div class="panel">
+          <h3>Blokované IP adresy</h3>
+          <p class="muted">Odblokujú sa samy po uplynutí časového okna.</p>
+          <div class="sms-log" id="security-blocked"></div>
+        </div>
+        <div class="panel">
+          <div class="toolbar"><h3>Pokusy o prihlásenie</h3><button type="button" class="btn btn-ghost btn-sm" id="security-refresh">↻ Obnoviť</button></div>
+          <p class="muted">Posledných 200 pokusov. Záznamy staršie ako 90 dní sa mažú automaticky.</p>
+          <div class="sms-log" id="security-log"></div>
         </div>
       </div>
     </section>
