@@ -629,6 +629,7 @@ const loadUsers = guard(async () => {
         <p>${[
           u.member_name ? esc(u.member_name) : u.role === 'solver' && '<span class="warn">bez člena tímu</span>',
           u.email ? esc(u.email) : '<span class="warn">bez e-mailu</span>',
+          u.phone && `<a href="tel:${esc(u.phone.replace(/\s/g, ''))}">${esc(u.phone)}</a>`,
           u.id === me.id && 'to ste vy',
         ].filter(Boolean).join(' · ')}</p></div>
       <div class="bk-actions pr-actions">
@@ -648,6 +649,7 @@ function openUserForm(u) {
   f.role.value = u?.role ?? 'solver';
   f.member_id.value = u?.member_id ?? '';
   f.email.value = u?.email ?? '';
+  f.phone.value = u?.phone ?? '';
   f.password.placeholder = u ? 'nechajte prázdne = bez zmeny' : 'nepovinné, ak zadáte e-mail';
   $('#pw-hint').textContent = u
     ? 'Heslo vyplňte len ak ho chcete zmeniť. Používateľovi s e-mailom môžete poslať odkaz na nastavenie hesla.'
@@ -664,7 +666,7 @@ userForm.addEventListener('submit', guard(async (e) => {
   e.preventDefault();
   const f = userForm.elements;
   const body = {
-    username: f.username.value, email: f.email.value, role: f.role.value,
+    username: f.username.value, email: f.email.value, phone: f.phone.value, role: f.role.value,
     member_id: f.member_id.value || null, password: f.password.value,
   };
   const id = f.id.value;

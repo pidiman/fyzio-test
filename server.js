@@ -853,6 +853,7 @@ async function userInput(body = {}, isNew) {
     role: body.role,
     member_id: body.member_id ? num(body.member_id) : null,
     email: str(body.email, 120),
+    phone: str(body.phone, 30),
     password: typeof body.password === 'string' ? body.password : '',
   };
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(u.username)) throw bad('Prihlasovacie meno: 3 – 32 znakov (písmená bez diakritiky, čísla, . _ -).');
@@ -860,6 +861,7 @@ async function userInput(body = {}, isNew) {
   if (u.member_id && !(await db.get('SELECT 1 FROM team_members WHERE id = ?', u.member_id))) throw bad('Neznámy člen tímu.');
   if (u.role === 'solver' && !u.member_id) throw bad('Terapeut musí byť priradený k členovi tímu.');
   if (u.email && !isEmail(u.email)) throw bad('Zadajte platný e-mail.');
+  if (u.phone && !/^\+?[\d\s/-]{6,}$/.test(u.phone)) throw bad('Zadajte platné telefónne číslo.');
   if (isNew && !u.password && !u.email) throw bad('Zadajte heslo alebo e-mail, na ktorý príde odkaz na nastavenie hesla.');
   if (u.password && u.password.length < 8) throw bad('Heslo musí mať aspoň 8 znakov.');
   return u;
@@ -874,8 +876,8 @@ const adminCount = async () => (await db.get("SELECT COUNT(*)::int AS n FROM use
 app.post('/api/admin/users', async (req, res) => {
   const u = await userInput(req.body, true);
   if (await usernameTaken(u.username)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
-  const { id } = await db.run('INSERT INTO users (username, password_hash, role, member_id, email) VALUES (?, ?, ?, ?, ?) RETURNING id',
-    u.username, hashPassword(u.password || crypto.randomBytes(24).toString('base64url')), u.role, u.member_id, u.email);
+  const { id } = await db.run('INSERT INTO users (username, password_hash, role, member_id, email, phone) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+    u.username, hashPassword(u.password || crypto.randomBytes(24).toString('base64url')), u.role, u.member_id, u.email, u.phone);
   let mailError = null;
   if (u.email) {
     try {
@@ -903,8 +905,8 @@ app.put('/api/admin/users/:id', async (req, res) => {
   if (await usernameTaken(u.username, current.id)) throw new HttpError(409, 'Toto prihlasovacie meno už existuje.');
   if (current.role === 'admin' && u.role !== 'admin' && (await adminCount()) === 1) throw bad('Musí zostať aspoň jeden admin.');
 
-  await db.run('UPDATE users SET username = ?, role = ?, member_id = ?, email = ? WHERE id = ?',
-    u.username, u.role, u.member_id, u.email, current.id);
+  await db.run('UPDATE users SET username = ?, role = ?, member_id = ?, email = ?, phone = ? WHERE id = ?',
+    u.username, u.role, u.member_id, u.email, u.phone, current.id);
   if (u.password) await db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(u.password), current.id);
   // zmena hesla alebo roly odhlási používateľa na ostatných zariadeniach
   if ((u.password || u.role !== current.role) && current.id !== req.user.id) await endSessions(current.id);
