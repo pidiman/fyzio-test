@@ -597,11 +597,14 @@ app.get('/api/admin/bookings', async (req, res) => {
     where.push('b.status = ?');
     params.push(req.query.status);
   }
+  // zoznam rezervácií: aktívne (nové, potvrdené) alebo archív (dokončené, zrušené); kalendár view neposiela
+  if (req.query.view === 'active') where.push("b.status IN ('new', 'confirmed')");
+  if (req.query.view === 'archive') where.push("b.status IN ('done', 'cancelled')");
   if (isAdmin(req) && req.query.member) {
     if (req.query.member === 'none') where.push('b.member_id IS NULL');
     else { where.push('b.member_id = ?'); params.push(num(req.query.member)); }
   }
-  const order = req.query.range === 'past' ? 'DESC' : 'ASC';
+  const order = req.query.range === 'past' || req.query.view === 'archive' ? 'DESC' : 'ASC';
   res.json(await db.all(`
     SELECT b.*, r.name AS room_name FROM bookings b LEFT JOIN rooms r ON r.id = b.room_id
     WHERE ${where.join(' AND ')}

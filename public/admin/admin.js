@@ -135,6 +135,17 @@ document.querySelectorAll('[data-tab]').forEach((btn) => btn.addEventListener('c
 // ---------- rezervácie ----------
 
 let teamOptions = [];
+// archív = dokončené a zrušené rezervácie, hlavný zoznam = nové a potvrdené
+let archive = false;
+const VIEW_STATUSES = { active: ['new', 'confirmed'], archive: ['done', 'cancelled'] };
+const STATUS_FILTER = { new: 'Nové', confirmed: 'Potvrdené', done: 'Dokončené', cancelled: 'Zrušené' };
+
+function renderStatusFilter() {
+  $('#f-status').innerHTML = '<option value="">Všetky stavy</option>' +
+    VIEW_STATUSES[archive ? 'archive' : 'active'].map((s) => `<option value="${s}">${STATUS_FILTER[s]}</option>`).join('');
+  $('#archive-toggle').textContent = archive ? '← Aktívne rezervácie' : 'Archív';
+}
+renderStatusFilter();
 
 const memberSelect = (selected) => `<option value="">— nepriradené —</option>` +
   teamOptions.map((m) => `<option value="${m.id}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}</option>`).join('');
@@ -147,7 +158,9 @@ const loadBookings = guard(async () => {
       teamOptions.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
     $('#f-member').value = current;
   }
-  const params = new URLSearchParams({ range: $('#f-range').value, status: $('#f-status').value });
+  const params = new URLSearchParams({
+    range: $('#f-range').value, status: $('#f-status').value, view: archive ? 'archive' : 'active',
+  });
   if (isAdmin() && $('#f-member').value) params.set('member', $('#f-member').value);
   const [stats, bookings] = await Promise.all([api('/api/admin/stats'), api(`/api/admin/bookings?${params}`)]);
 
@@ -179,7 +192,15 @@ const loadBookings = guard(async () => {
         ${b.status === 'cancelled' ? `<button class="btn btn-ghost btn-sm" data-status="new" data-id="${b.id}">Obnoviť</button>` : ''}
         ${isAdmin() ? `<button class="btn btn-danger btn-sm" data-delete-booking="${b.id}">Vymazať</button>` : ''}
       </div>
-    </article>`).join('') || '<div class="empty">Žiadne rezervácie pre zvolený filter.</div>';
+    </article>`).join('') || `<div class="empty">${archive ? 'V archíve nie sú' : 'Žiadne'} rezervácie pre zvolený filter.</div>`;
+});
+
+// archív sa otvára so všetkými dátumami (dokončené a zrušené sú väčšinou v minulosti)
+$('#archive-toggle').addEventListener('click', () => {
+  archive = !archive;
+  $('#f-range').value = archive ? 'all' : 'upcoming';
+  renderStatusFilter();
+  loadBookings();
 });
 
 $('#f-range').addEventListener('change', loadBookings);
