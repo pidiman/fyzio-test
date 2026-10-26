@@ -824,6 +824,21 @@ $('#password-form').addEventListener('submit', guard(async (e) => {
 let blockedDates = [];
 const settingsForm = $('#settings-form');
 
+// podzáložky nastavení: vždy je otvorená jedna, posledná sa pamätá v prehliadači
+function openSettingsTab(name) {
+  if (!$(`[data-set-pane="${name}"]`)) name = 'operation';
+  document.querySelectorAll('[data-set-tab]').forEach((b) => b.classList.toggle('active', b.dataset.setTab === name));
+  document.querySelectorAll('[data-set-pane]').forEach((p) => { p.hidden = p.dataset.setPane !== name; });
+  try { localStorage.setItem('settingsTab', name); } catch {}
+}
+
+$('#settings-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-set-tab]');
+  if (btn) openSettingsTab(btn.dataset.setTab);
+});
+
+try { openSettingsTab(localStorage.getItem('settingsTab')); } catch { openSettingsTab('operation'); }
+
 function renderBlocked() {
   $('#blocked').innerHTML = blockedDates.map((d) =>
     `<span class="chip">${fmtDate(d)}<button type="button" data-unblock="${d}" aria-label="Odstrániť">×</button></span>`

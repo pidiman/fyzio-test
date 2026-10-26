@@ -142,6 +142,13 @@ label input,label select,label textarea{font-weight:400}
 label.check{display:flex;align-items:center;gap:10px}
 label.check input{width:18px;height:18px;accent-color:var(--br-600)}
 .form-actions{display:flex;gap:10px}
+/* podzáložky nastavení */
+.subtabs{display:flex;gap:4px;background:var(--br-100);padding:4px;border-radius:999px;width:max-content;max-width:100%;overflow-x:auto;margin:4px 0 20px}
+.subtabs button{background:none;border:0;padding:9px 18px;border-radius:999px;font:inherit;font-weight:600;font-size:.9rem;color:var(--muted);cursor:pointer;white-space:nowrap}
+.subtabs button.active{background:#fff;color:var(--br-900);box-shadow:0 1px 3px rgba(46,42,38,.12)}
+.set-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.set-grid>.panel{margin-bottom:0}
+@media (max-width:760px){.set-grid{grid-template-columns:1fr}.subtabs button{padding:9px 12px}}
 /* prepínač zapnuté / vypnuté */
 label.switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500}
 label.switch input{position:absolute;opacity:0;width:0;height:0}
