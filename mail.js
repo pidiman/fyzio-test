@@ -18,7 +18,7 @@ const transport = SMTP_HOST
     })
   : null;
 
-export const mailStatus = { configured: !!transport, adminEmail: ADMIN_EMAIL || '' };
+export const mailStatus = { configured: !!transport, fallbackEmail: ADMIN_EMAIL || '' };
 
 if (!transport) {
   console.warn('SMTP nie je nastavené – e-maily sa neodosielajú.');
@@ -28,7 +28,6 @@ if (!transport) {
     (err) => console.error(`SMTP chyba (${SMTP_HOST}:${port}):`, err.message)
   );
   if (!MAIL_FROM && !SMTP_USER) console.warn('MAIL_FROM nie je nastavené – relay môže e-maily bez odosielateľa odmietnuť.');
-  if (!ADMIN_EMAIL) console.warn('ADMIN_EMAIL nie je nastavené – upozornenia na nové rezervácie sa neodosielajú.');
 }
 
 const DAYS = ['nedeľa', 'pondelok', 'utorok', 'streda', 'štvrtok', 'piatok', 'sobota'];
@@ -192,6 +191,12 @@ export async function sendAccountInvite(user, link, isNew) {
   }));
 }
 
+// zoznam adries bez prázdnych a duplicít (bez ohľadu na veľkosť písmen)
+const uniq = (emails) => {
+  const seen = new Set();
+  return emails.filter((e) => e && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+};
+
 // Odoslanie na pozadí – chyba e-mailu nesmie zhodiť rezerváciu
 function sendLater(to, { subject, text, html }, replyTo) {
   if (!transport || !to) return;
@@ -200,9 +205,8 @@ function sendLater(to, { subject, text, html }, replyTo) {
     .catch((err) => console.error(`E-mail pre ${to} sa nepodarilo odoslať:`, err.message));
 }
 
-export function notifyPasswordSet(user, isNew, adminEmails) {
-  const seen = new Set();
-  const to = [...adminEmails, ADMIN_EMAIL].filter((e) => e && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+export function notifyPasswordSet(user, isNew, staffEmails) {
+  const to = uniq(staffEmails);
   if (!to.length) return;
   const who = user.member_name ? `${user.member_name} (${user.username})` : user.username;
   const { url } = contact();
@@ -247,9 +251,9 @@ export function notifyTherapist(b, emails, kind) {
   });
 }
 
-// Nová rezervácia z webu: upozornenie pre ADMIN_EMAIL a pre terapeuta, ktorému sa pridelila
+// Nová rezervácia z webu: upozornenie pre adresátov notifikácií a pre terapeuta, ktorému sa pridelila
 // (odpoveď na e-mail ide priamo klientovi); klient dostane potvrdenie prijatia
-export function notifyNewBooking(b, therapistEmails = []) {
+export function notifyNewBooking(b, staffEmails, therapistEmails = []) {
   const { url } = contact();
   const when = `${fmtDate(b.date)}, ${b.time} – ${b.end_time}`;
   const rows = [
@@ -277,11 +281,11 @@ export function notifyNewBooking(b, therapistEmails = []) {
   });
   const replyTo = b.email || undefined;
   const pending = 'Termín čaká na potvrdenie – klient dostane e-mail, keď ho potvrdíte.';
-  sendLater(ADMIN_EMAIL, message(`tím ${SITE_NAME}`, `cez web prišla nová rezervácia. ${pending}`), replyTo);
+  const staff = uniq(staffEmails);
+  if (staff.length) sendLater(staff.join(', '), message(`tím ${SITE_NAME}`, `cez web prišla nová rezervácia. ${pending}`), replyTo);
 
-  // terapeut dostane e-mail len raz, aj keď je zároveň ADMIN_EMAIL
-  const seen = new Set([ADMIN_EMAIL?.toLowerCase()]);
-  const therapists = therapistEmails.filter((e) => !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+  // terapeut dostane e-mail len raz, aj keď je zároveň medzi adresátmi notifikácií
+  const therapists = uniq([...staff, ...therapistEmails]).slice(staff.length);
   if (therapists.length) {
     sendLater(therapists.join(', '), message(b.member_name, `máte novú rezerváciu cez web. ${pending}`), replyTo);
   }
@@ -330,10 +334,9 @@ export function notifyClientPasswordReset(c, link) {
   });
 }
 
-// Klient zrušil termín na webe: dôvod dostanú admini (ADMIN_EMAIL a účty adminov) a priradený terapeut
+// Klient zrušil termín na webe: dôvod dostanú adresáti notifikácií a priradený terapeut
 export function notifyClientCancelled(b, staffEmails) {
-  const seen = new Set();
-  const to = [...staffEmails, ADMIN_EMAIL].filter((e) => e && !seen.has(e.toLowerCase()) && seen.add(e.toLowerCase()));
+  const to = uniq(staffEmails);
   if (!to.length) return;
   const { url } = contact();
   const when = `${fmtDate(b.date)}, ${b.time} – ${b.end_time}`;

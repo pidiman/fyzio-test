@@ -35,7 +35,9 @@ Pri prvej migrácii sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (
 
 Bez nastaveného SMTP sa rezervácie len ukladajú do adminu. Po nastavení:
 
-- na `ADMIN_EMAIL` príde upozornenie na každú novú rezerváciu (odpoveď ide priamo klientovi),
+- vybraným používateľom (Nastavenia → E-mailové notifikácie, e-mail z ich profilu) príde upozornenie na každú novú
+  rezerváciu (odpoveď ide priamo klientovi), na termín zrušený klientom a na aktivovaný účet;
+  kým nie je vybraný nikto s e-mailom, upozornenia idú na `ADMIN_EMAIL` z `.env`,
 - klient (ak zadal e-mail) dostane potvrdenie prijatia, potvrdenie termínu a info o zrušení.
 
 ### Cez smtp-relay na serveri (odporúčané)

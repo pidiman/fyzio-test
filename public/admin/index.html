@@ -241,11 +241,17 @@
         </div>
         <button class="btn btn-primary">Uložiť nastavenia</button>
       </form>
-      <div class="panel" style="margin-top:16px">
-        <h3>E-mailové notifikácie</h3>
-        <p class="muted" id="mail-status">Načítavam…</p>
-        <button type="button" class="btn btn-ghost btn-sm" id="mail-test">Poslať testovací e-mail</button>
-      </div>
+      <form class="panel form-grid" id="mail-form" style="margin-top:16px">
+        <h3 class="full">E-mailové notifikácie</h3>
+        <p class="muted full" id="mail-status">Načítavam…</p>
+        <p class="muted full">Komu chodia upozornenia na nové rezervácie, termíny zrušené klientom a aktivované účty.
+          E-mail sa berie z profilu používateľa. Terapeut dostane upozornenia na svoje termíny vždy.</p>
+        <div class="checks full" id="mail-users"></div>
+        <div class="full form-actions">
+          <button class="btn btn-primary">Uložiť</button>
+          <button type="button" class="btn btn-ghost" id="mail-test">Poslať testovací e-mail</button>
+        </div>
+      </form>
       <form class="panel form-grid" id="sms-form" style="margin-top:16px" autocomplete="off">
         <h3 class="full">SMS notifikácie (SMSfarm.sk)</h3>
         <p class="muted full" id="sms-status">Načítavam…</p>

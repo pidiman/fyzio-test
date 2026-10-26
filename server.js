@@ -196,7 +196,7 @@ app.post('/api/bookings', rateLimit(10, 3600e3), async (req, res) => {
   const therapists = booking.member_id
     ? (await db.all("SELECT email FROM users WHERE member_id = ? AND email != ''", booking.member_id)).map((u) => u.email)
     : [];
-  notifyNewBooking({ ...booking, room_name: room?.name ?? '' }, therapists);
+  notifyNewBooking({ ...booking, room_name: room?.name ?? '' }, await notifyEmails(), therapists);
   res.status(201).json({ id: booking.id, member_name: booking.member_name });
 });
 
@@ -218,6 +218,15 @@ app.post('/api/admin/login', rateLimit(10, 15 * 60e3), async (req, res) => {
   res.cookie('sid', token, { httpOnly: true, sameSite: 'strict', secure: req.secure, maxAge: SESSION_MS, path: '/' });
   res.json({ ok: true });
 });
+
+// ---------- adresáti e-mailových notifikácií ----------
+
+// e-maily z profilov používateľov vybraných v Nastaveniach; kým nie je vybraný nikto s e-mailom, ADMIN_EMAIL z .env
+async function notifyEmails(exceptUserId = 0) {
+  const rows = await db.all("SELECT email FROM users WHERE id = ANY(?) AND email != '' AND id != ?",
+    getSettings().notify_user_ids ?? [], exceptUserId);
+  return rows.length ? rows.map((u) => u.email) : [mailStatus.fallbackEmail].filter(Boolean);
+}
 
 // ---------- nastavenie hesla cez odkaz z e-mailu ----------
 
@@ -253,10 +262,8 @@ app.post('/api/admin/password-reset', rateLimit(10, 15 * 60e3), async (req, res)
   await db.run('DELETE FROM password_tokens WHERE user_id = ?', row.user_id);
   await endSessions(row.user_id);
   const user = await accountUser(row.user_id);
-  // upozornenie pre adminov s e-mailom v účte a pre ADMIN_EMAIL
-  const admins = (await db.all("SELECT email FROM users WHERE role = 'admin' AND email != '' AND id != ?", user.id))
-    .map((a) => a.email);
-  notifyPasswordSet(user, row.kind === 'invite', admins);
+  // upozornenie pre adresátov notifikácií (okrem samotného používateľa)
+  notifyPasswordSet(user, row.kind === 'invite', await notifyEmails(user.id));
   res.json({ username: user.username });
 });
 
@@ -452,11 +459,10 @@ app.post('/api/client/bookings/:id/cancel', rateLimit(20, 3600e3), async (req, r
   );
   if (!changes) throw bad('Túto rezerváciu už nie je možné zrušiť.');
   const cancelled = { ...booking, status: 'cancelled', cancel_reason: reason };
-  const admins = (await db.all("SELECT email FROM users WHERE role = 'admin' AND email != ''")).map((u) => u.email);
   const therapists = booking.member_id
     ? (await db.all("SELECT email FROM users WHERE member_id = ? AND email != ''", booking.member_id)).map((u) => u.email)
     : [];
-  notifyClientCancelled(cancelled, [...admins, ...therapists]);
+  notifyClientCancelled(cancelled, [...await notifyEmails(), ...therapists]);
   notifyStatus(cancelled, 'cancelled');
   res.json({ ok: true });
 });
@@ -936,7 +942,16 @@ app.get('/api/admin/settings', (req, res) => {
   res.json(settings);
 });
 
-app.get('/api/admin/mail', (req, res) => res.json(mailStatus));
+app.get('/api/admin/mail', async (req, res) => {
+  res.json({ ...mailStatus, user_ids: getSettings().notify_user_ids ?? [], recipients: await notifyEmails() });
+});
+
+// výber používateľov, na ktorých e-maily chodia notifikácie (nové rezervácie, zrušenia, aktivácie účtov)
+app.put('/api/admin/mail', async (req, res) => {
+  const known = (await db.all('SELECT id FROM users WHERE id = ANY(?) ORDER BY id', ids(req.body?.user_ids))).map((u) => u.id);
+  await saveSettings({ notify_user_ids: known });
+  res.json({ ok: true });
+});
 
 // ---------- SMS cez SMSfarm.sk (len admin) ----------
 
@@ -1026,9 +1041,10 @@ app.post('/api/admin/sms/log/:id/delivery', async (req, res) => {
 });
 
 app.post('/api/admin/mail/test', async (req, res) => {
-  if (!mailStatus.adminEmail) throw bad('ADMIN_EMAIL nie je nastavené.');
+  const to = await notifyEmails();
+  if (!to.length) throw bad('Nie je vybraný žiadny adresát notifikácií s e-mailom.');
   try {
-    await sendMail(mailStatus.adminEmail, 'Testovací e-mail', 'Odosielanie e-mailov z rezervačného systému funguje.');
+    await sendMail(to.join(', '), 'Testovací e-mail', 'Odosielanie e-mailov z rezervačného systému funguje.');
   } catch (err) {
     throw bad(`Odoslanie zlyhalo: ${err.message}`);
   }

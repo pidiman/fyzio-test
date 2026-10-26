@@ -201,6 +201,8 @@ const DEFAULT_SETTINGS = {
   contact_phone: process.env.CONTACT_PHONE || '',
   site_url: process.env.SITE_URL || '',
   address: '',
+  // id používateľov, na ktorých e-maily chodia notifikácie pre tím (prázdne = ADMIN_EMAIL z .env)
+  notify_user_ids: [],
   // SMSfarm.sk – zadáva admin v Nastaveniach (heslo sa do prehliadača neposiela)
   sms_integration_id: '',
   sms_integration_code: '',

@@ -828,15 +828,35 @@ const loadSettings = guard(async () => {
   blockedDates = s.blocked_dates;
   renderBlocked();
 
-  const mail = await api('/api/admin/mail');
-  $('#mail-status').textContent = !mail.configured
-    ? 'SMTP nie je nastavené – e-maily sa neodosielajú. Doplňte SMTP_* premenné do .env a reštartujte server.'
-    : mail.adminEmail
-      ? `Nové rezervácie chodia na ${mail.adminEmail}. Klient dostane e-mail pri prijatí, potvrdení a zrušení termínu.`
-      : 'SMTP je nastavené, ale chýba ADMIN_EMAIL – upozornenia na nové rezervácie nechodia.';
-  $('#mail-test').hidden = !(mail.configured && mail.adminEmail);
+  await loadMail();
   await loadSms();
 });
+
+// ---------- e-mailové notifikácie ----------
+
+async function loadMail() {
+  const [mail, list] = await Promise.all([api('/api/admin/mail'), api('/api/admin/users')]);
+  $('#mail-status').textContent = !mail.configured
+    ? 'SMTP nie je nastavené – e-maily sa neodosielajú. Doplňte SMTP_* premenné do .env a reštartujte server.'
+    : mail.recipients.length
+      ? `Upozornenia pre tím chodia na ${mail.recipients.join(', ')}. Klient dostane e-mail pri prijatí, potvrdení a zrušení termínu.`
+      : 'SMTP je nastavené, ale nie je vybraný nikto s e-mailom – upozornenia na nové rezervácie nechodia.';
+  $('#mail-users').innerHTML = list.map((u) => `
+    <label class="check">
+      <input type="checkbox" value="${u.id}" ${mail.user_ids.includes(u.id) ? 'checked' : ''} ${u.email ? '' : 'disabled'}>
+      <span><b>${esc(u.member_name || u.username)}</b><br>
+        ${u.email ? `<span class="muted-inline">${esc(u.email)}</span>` : '<span class="warn">bez e-mailu v profile</span>'}</span>
+    </label>`).join('');
+  $('#mail-test').hidden = !(mail.configured && mail.recipients.length);
+}
+
+$('#mail-form').addEventListener('submit', guard(async (e) => {
+  e.preventDefault();
+  const user_ids = [...$('#mail-users').querySelectorAll('input:checked')].map((c) => Number(c.value));
+  await api('/api/admin/mail', { method: 'PUT', body: { user_ids } });
+  toast('Adresáti notifikácií uložení');
+  await loadMail();
+}));
 
 // ---------- SMS ----------
 
