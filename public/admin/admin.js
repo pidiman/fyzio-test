@@ -844,7 +844,8 @@ async function loadMail() {
   $('#mail-users').innerHTML = list.map((u) => `
     <label class="check">
       <input type="checkbox" value="${u.id}" ${mail.user_ids.includes(u.id) ? 'checked' : ''} ${u.email ? '' : 'disabled'}>
-      <span><b>${esc(u.member_name || u.username)}</b><br>
+      <span><b>${esc(u.member_name || u.username)}</b>
+        <span class="badge ${u.role === 'admin' ? 'b-confirmed' : 'b-done'}">${ROLE[u.role]}</span><br>
         ${u.email ? `<span class="muted-inline">${esc(u.email)}</span>` : '<span class="warn">bez e-mailu v profile</span>'}</span>
     </label>`).join('');
   $('#mail-test').hidden = !(mail.configured && mail.recipients.length);
