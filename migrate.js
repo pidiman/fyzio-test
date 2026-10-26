@@ -2,6 +2,8 @@
 // Spúšťa sa samostatne pred štartom servera – lokálne `npm run migrate`, na serveri ju volá deploy.sh.
 // Dá sa spustiť opakovane, existujúce dáta nemení.
 import crypto from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { db } from './db.js';
 import { hashPassword } from './passwords.js';
 
@@ -158,7 +160,26 @@ await db.exec(`
     delivery   text        NOT NULL DEFAULT ''
   );
   CREATE INDEX IF NOT EXISTS sms_log_created ON sms_log (created_at);
+
+  -- fotky tímu a profilov (JPEG); name sa ukladá do team_members.photo a users.photo, web ich dáva na /media/<name>
+  CREATE TABLE IF NOT EXISTS media (
+    name       text        PRIMARY KEY,
+    data       bytea       NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
 `);
+
+// ---------- fotky, ktoré sa kedysi ukladali na disk (DATA_DIR/media) ----------
+
+// súbory na disku ostávajú ako záloha, prenesú sa len tie, ktoré ešte v databáze nie sú
+const mediaDir = path.join(process.env.DATA_DIR || path.join(import.meta.dirname, 'data'), 'media');
+if (existsSync(mediaDir)) {
+  for (const name of readdirSync(mediaDir).filter((f) => f.endsWith('.jpg'))) {
+    const { changes } = await db.run('INSERT INTO media (name, data) VALUES (?, ?) ON CONFLICT (name) DO NOTHING',
+      name, readFileSync(path.join(mediaDir, name)));
+    if (changes) console.log(`Fotka prenesená do databázy: ${name}`);
+  }
+}
 
 // ---------- predvolené údaje pre úplne novú prevádzku ----------
 

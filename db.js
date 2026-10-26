@@ -1,11 +1,4 @@
 import pg from 'pg';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-
-// dáta mimo databázy (fotky tímu)
-export const dataDir = process.env.DATA_DIR || path.join(import.meta.dirname, 'data');
-export const mediaDir = path.join(dataDir, 'media');
-mkdirSync(mediaDir, { recursive: true });
 
 export const ICON_KEYS = ['spine', 'sport', 'pulse', 'hand', 'bolt', 'child', 'heart', 'leaf'];
 

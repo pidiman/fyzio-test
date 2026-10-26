@@ -27,7 +27,7 @@ Vyžaduje Node.js 24 alebo novší a PostgreSQL (napr. `docker run -d -p 5432:54
 Pripojenie sa nastavuje v `.env` cez `DATABASE_URL=postgres://postgres:fyzio@localhost:5432/postgres`
 alebo štandardné premenné `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`.
 Tabuľky vytvára migrácia (`migrate.js`), server bez nej neštartuje; prázdnu databázu naplní ukážkovými procedúrami a tímom.
-Fotky tímu sa ukladajú do `data/media`.
+Fotky tímu sa ukladajú do databázy (tabuľka `media`).
 Pri prvej migrácii sa vytvorí účet **`admin`** s heslom z `ADMIN_PASSWORD` (ak nie je nastavené, server vypíše dočasné heslo).
 Ďalšie účty sa zakladajú v administrácii, `ADMIN_PASSWORD` sa potom už nepoužíva – heslo zmeníte v záložke *Môj účet*.
 
@@ -198,12 +198,10 @@ Pôvodná SQLite databáza ostáva po prechode na Postgres vo volume ako záloha
 
 ### Záloha
 
+Databáza obsahuje všetko vrátane fotiek tímu:
+
 ```bash
-# databáza
 docker exec fyzio-db pg_dump -U fyzio -Fc fyzio > ~/backups/fyzio-$(date +%F).dump
-# fotky tímu
-docker run --rm -v fyzio_fyzio-data:/data -v ~/backups:/b alpine \
-  tar czf /b/fyzio-media-$(date +%F).tgz -C /data .
 ```
 
 Obnova databázy: `docker exec -i fyzio-db pg_restore -U fyzio -d fyzio --clean < ~/backups/fyzio-RRRR-MM-DD.dump`
@@ -211,7 +209,8 @@ Obnova databázy: `docker exec -i fyzio-db pg_restore -U fyzio -d fyzio --clean 
 ## Poznámky
 
 - Rezervácie sa nesmú prekrývať v rovnakej miestnosti ani u rovnakého terapeuta.
-- Fotky tímu sú v `data/media` (v Dockeri vo volume `fyzio-data`).
+- Fotky tímu sú v databáze (tabuľka `media`). Staršie fotky z `data/media` (volume `fyzio-data`) prenesie do databázy
+  migrácia; súbory ostávajú ako záloha.
 - Prihlásenia do adminu sa ukladajú do databázy (len hash tokenu), reštart ani nasadenie nikoho neodhlási.
 - Fonty (Jost, Playfair Display) sú v `public/fonts`, web nenačítava nič z Google Fonts.
 

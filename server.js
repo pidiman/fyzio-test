@@ -1,8 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { db, loadSettings, getSettings, saveSettings, ICON_KEYS, mediaDir } from './db.js';
+import { db, loadSettings, getSettings, saveSettings, ICON_KEYS } from './db.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import { toMin, toTime, isTime, isDate, freeSlots } from './slots.js';
 import {
@@ -121,8 +120,12 @@ app.disable('x-powered-by');
 app.use(['/api/admin/team', '/api/admin/me/profile'], express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '50kb' }));
 app.use(express.static(path.join(import.meta.dirname, 'public')));
-// názvy súborov sú náhodné, obsah sa pod rovnakým menom nemení
-app.use('/media', express.static(mediaDir, { maxAge: '365d', immutable: true }));
+// fotky sú v databáze; názvy sú náhodné, obsah sa pod rovnakým menom nemení
+app.get('/media/:name', async (req, res) => {
+  const row = await db.get('SELECT data FROM media WHERE name = ?', req.params.name);
+  if (!row) return res.status(404).end();
+  res.set('Cache-Control', 'public, max-age=31536000, immutable').type('jpeg').send(row.data);
+});
 
 // ---------- verejné API ----------
 
@@ -520,7 +523,7 @@ app.put('/api/admin/me/profile', async (req, res) => {
   const linked = user.member_id != null;
   const current = linked ? user.member_photo : user.photo;
   let photo = current;
-  if (isNewPhoto(body.photo)) photo = savePhoto(body.photo);
+  if (isNewPhoto(body.photo)) photo = await savePhoto(body.photo);
   else if (body.photo === null) photo = '';
 
   await db.tx(async (t) => {
@@ -531,7 +534,7 @@ app.put('/api/admin/me/profile', async (req, res) => {
     await t.run('UPDATE users SET name = ?, email = ?, phone = ?, photo = ? WHERE id = ?',
       name, email, phone, linked ? user.photo : photo, req.user.id);
   });
-  if (photo !== current) removePhoto(current);
+  if (photo !== current) await removePhoto(current);
   res.json(await profile(req.user.id));
 });
 
@@ -760,16 +763,16 @@ app.get('/api/admin/team', async (req, res) => {
 });
 
 // fotku orezáva a zmenšuje prehliadač, server prijme len JPEG
-function savePhoto(dataUrl) {
+async function savePhoto(dataUrl) {
   const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/]+=*)$/.exec(dataUrl);
   const buf = match && Buffer.from(match[1], 'base64');
   if (!buf || buf.length > 1.5e6 || buf[0] !== 0xff || buf[1] !== 0xd8) throw bad('Fotka musí byť obrázok JPEG do 1,5 MB.');
   const file = `team-${crypto.randomBytes(8).toString('hex')}.jpg`;
-  writeFileSync(path.join(mediaDir, file), buf);
+  await db.run('INSERT INTO media (name, data) VALUES (?, ?)', file, buf);
   return file;
 }
 const isNewPhoto = (v) => typeof v === 'string' && v.startsWith('data:');
-const removePhoto = (file) => file && rmSync(path.join(mediaDir, file), { force: true });
+const removePhoto = async (file) => file && db.run('DELETE FROM media WHERE name = ?', file);
 
 function memberInput(body = {}) {
   const m = {
@@ -801,7 +804,7 @@ const saveMember = (id, m, photo) => db.tx(async (t) => {
 
 app.post('/api/admin/team', async (req, res) => {
   const m = memberInput(req.body);
-  const photo = isNewPhoto(req.body.photo) ? savePhoto(req.body.photo) : '';
+  const photo = isNewPhoto(req.body.photo) ? await savePhoto(req.body.photo) : '';
   res.status(201).json({ id: await saveMember(null, m, photo) });
 });
 
@@ -811,10 +814,10 @@ app.put('/api/admin/team/:id', async (req, res) => {
   if (!current) throw new HttpError(404, 'Člen tímu neexistuje.');
   const m = memberInput(req.body);
   let photo = current.photo;
-  if (isNewPhoto(req.body.photo)) photo = savePhoto(req.body.photo);
+  if (isNewPhoto(req.body.photo)) photo = await savePhoto(req.body.photo);
   else if (req.body.photo === null) photo = '';
   await saveMember(current.id, m, photo);
-  if (photo !== current.photo) removePhoto(current.photo);
+  if (photo !== current.photo) await removePhoto(current.photo);
   res.json({ ok: true });
 });
 
@@ -825,7 +828,7 @@ app.delete('/api/admin/team/:id', async (req, res) => {
     throw new HttpError(409, 'Člen tímu má prihlasovací účet terapeuta – najprv ho vymažte v Používateľoch.');
   }
   await db.run('DELETE FROM team_members WHERE id = ?', member.id);
-  removePhoto(member.photo);
+  await removePhoto(member.photo);
   res.json({ ok: true });
 });
 
