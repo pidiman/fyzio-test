@@ -874,9 +874,12 @@ async function loadSms() {
   f.sender.value = sms.sender;
   f.code.value = '';
   f.code.placeholder = sms.code_set ? 'uložené – nechajte prázdne' : '';
-  $('#sms-status').textContent = sms.configured
-    ? 'Klient s vyplneným telefónom dostane SMS, keď sa jeho termín potvrdí.'
-    : 'SMS sa neodosielajú – vyplňte všetky tri údaje a uložte.';
+  $('#sms-enabled').checked = sms.enabled;
+  $('#sms-status').textContent = !sms.enabled
+    ? 'SMS notifikácie sú vypnuté – klientom sa neposiela žiadna SMS.'
+    : sms.configured
+      ? 'Klient s vyplneným telefónom dostane SMS, keď sa jeho termín potvrdí.'
+      : 'SMS sa neodosielajú – vyplňte všetky tri údaje a uložte.';
   $('#sms-check').hidden = $('#sms-test-panel').hidden = !sms.configured;
   renderSmsLog(sms.log);
 }
@@ -913,6 +916,16 @@ smsForm.addEventListener('submit', guard(async (e) => {
   });
   toast('Nastavenia SMS uložené');
   await loadSms();
+}));
+
+$('#sms-enabled').addEventListener('change', guard(async (e) => {
+  const enabled = e.target.checked;
+  try {
+    await api('/api/admin/sms/enabled', { method: 'PUT', body: { enabled } });
+    toast(enabled ? 'SMS notifikácie zapnuté' : 'SMS notifikácie vypnuté');
+  } finally {
+    await loadSms();
+  }
 }));
 
 $('#sms-check').addEventListener('click', guard(async () => {

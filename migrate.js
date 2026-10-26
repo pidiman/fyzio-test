@@ -207,6 +207,8 @@ const DEFAULT_SETTINGS = {
   sms_integration_id: '',
   sms_integration_code: '',
   sms_sender: '',
+  // vypínač SMS notifikácií – false = cez SMS bránu sa neposiela nič (okrem ručnej testovacej SMS)
+  sms_enabled: true,
 };
 
 for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {

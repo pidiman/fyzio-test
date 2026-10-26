@@ -643,7 +643,7 @@ app.patch('/api/admin/bookings/:id', async (req, res) => {
       status, status, booking.id);
     if (booking.status !== status) notifyStatus(booking, status);
     // SMS len pri potvrdení a len klientovi s vyplneným telefónom
-    if (status === 'confirmed' && booking.status !== 'confirmed' && booking.phone && smsConfigured(smsCfg())) {
+    if (status === 'confirmed' && booking.status !== 'confirmed' && booking.phone && smsEnabled()) {
       sendLoggedSms('confirmed', booking.phone, confirmedText(booking, getSettings().contact_phone), booking.id)
         .catch((err) => console.error('SMS log:', err.message));
     }
@@ -938,7 +938,7 @@ app.delete('/api/admin/clients/:id', async (req, res) => {
 
 // prístupové údaje SMS majú vlastnú časť (/api/admin/sms), heslo sa do prehliadača neposiela
 app.get('/api/admin/settings', (req, res) => {
-  const { sms_integration_id, sms_integration_code, sms_sender, ...settings } = getSettings();
+  const { sms_integration_id, sms_integration_code, sms_sender, sms_enabled, ...settings } = getSettings();
   res.json(settings);
 });
 
@@ -954,6 +954,9 @@ app.put('/api/admin/mail', async (req, res) => {
 });
 
 // ---------- SMS cez SMSfarm.sk (len admin) ----------
+
+// SMS notifikácie sa posielajú, len ak ich admin nevypol a SMSfarm je nastavené
+const smsEnabled = () => getSettings().sms_enabled !== false && smsConfigured(smsCfg());
 
 const smsCfg = () => {
   const s = getSettings();
@@ -992,7 +995,7 @@ app.get('/api/admin/sms', async (req, res) => {
   const s = getSettings();
   res.json({
     integration_id: s.sms_integration_id, sender: s.sms_sender, code_set: !!s.sms_integration_code,
-    configured: smsConfigured(smsCfg()), log: await smsLog(),
+    configured: smsConfigured(smsCfg()), enabled: s.sms_enabled !== false, log: await smsLog(),
   });
 });
 
@@ -1005,6 +1008,11 @@ app.put('/api/admin/sms', async (req, res) => {
     throw bad('Odosielateľ: alias do 11 znakov (písmená bez diakritiky, čísla) alebo telefónne číslo.');
   }
   await saveSettings(values);
+  res.json({ ok: true });
+});
+
+app.put('/api/admin/sms/enabled', async (req, res) => {
+  await saveSettings({ sms_enabled: req.body?.enabled !== false });
   res.json({ ok: true });
 });
 

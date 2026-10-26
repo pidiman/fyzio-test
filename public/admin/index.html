@@ -253,7 +253,10 @@
         </div>
       </form>
       <form class="panel form-grid" id="sms-form" style="margin-top:16px" autocomplete="off">
-        <h3 class="full">SMS notifikácie (SMSfarm.sk)</h3>
+        <div class="full toolbar" style="margin-bottom:0">
+          <h3>SMS notifikácie (SMSfarm.sk)</h3>
+          <label class="switch"><input type="checkbox" id="sms-enabled" checked><span></span> Zapnuté</label>
+        </div>
         <p class="muted full" id="sms-status">Načítavam…</p>
         <label>Integračné ID<input name="integration_id" maxlength="100" autocomplete="off"></label>
         <label>Integračné heslo<input name="code" type="password" maxlength="200" autocomplete="new-password"></label>
